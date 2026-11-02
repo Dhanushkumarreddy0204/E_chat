@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-text font-sans tracking-tight antialiased;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: theme('colors.brand.50');
+}
+
+::-webkit-scrollbar-thumb {
+  background: theme('colors.brand.200');
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.brand.400');
+}
+
+/* Stories Ring Animation */
+@keyframes ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.story-ring-unseen {
+  background: theme('colors.brand.500');
+  padding: 2.5px;
+  border-radius: 9999px;
+}
+
+.story-ring-seen {
+  background: theme('colors.brand.200');
+  padding: 2px;
+  border-radius: 9999px;
+}
+
+/* Base utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area insets for mobile devices */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+

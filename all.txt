@@ -1,0 +1,279 @@
+ECHat PROJECT GUIDE
+==================
+
+What this project is
+--------------------
+EChat is a full-stack social networking and direct-messaging web application.
+It combines a social feed, user profiles and follows, stories, short video clips,
+saved posts, notifications, and one-to-one or group chats. The frontend is a
+React single-page application. The backend is a Python FastAPI service. MongoDB
+stores application data, and WebSockets deliver live events such as messages,
+typing indicators, presence changes, reactions, and notifications.
+
+The main stack
+--------------
+- Frontend: React 18, JavaScript/JSX, Vite, React Router, Axios, Tailwind CSS.
+- Backend: Python 3.11, FastAPI, Pydantic, Uvicorn.
+- Database: MongoDB 7, accessed asynchronously through Motor (with PyMongo).
+- Authentication: JWT bearer tokens and bcrypt password hashing.
+- Realtime: WebSocket endpoint served by FastAPI.
+- Media: uploaded files are stored in the backend uploads directory and served
+  from the /uploads URL path.
+- Containers: Docker images for the backend and frontend, coordinated with
+  Docker Compose; Nginx serves the built frontend and proxies API traffic.
+
+High-level architecture and request flow
+-----------------------------------------
+1. A user opens the React app in a browser. React Router selects a page and
+   shared React Context providers make authentication, chat and socket state
+   available to the relevant components.
+2. For normal requests, a page or component calls a function in frontend/src/api.
+   Those API modules use the shared Axios client in api/client.js.
+3. The Axios client uses /api/v1 by default and adds the saved bearer token to
+   requests. During local Vite development, Vite proxies /api and /uploads to
+   FastAPI. In Docker, Nginx proxies those paths to the backend container.
+4. FastAPI routes validate incoming and outgoing data with Pydantic schemas,
+   use dependency helpers for database access and authenticated users, and read
+   or write MongoDB collections through Motor.
+5. For realtime behavior, the browser opens /ws with its JWT. FastAPI verifies
+   that token and the connection manager sends events to connected clients.
+6. Uploaded media is saved by the backend and returned as a URL. The frontend
+   displays the URL, while Nginx or FastAPI serves the file through /uploads.
+
+Repository layout
+-----------------
+Top level:
+- README.md: overview, features, demo accounts and startup instructions.
+- docker-compose.yml: MongoDB, backend, frontend services and their network.
+- all.txt: this detailed project guide.
+- cleanup.js: one-off script that edits JSX Tailwind class strings to remove or
+  normalize selected styling classes. It walks frontend/src and writes changes.
+- replace_colors.js: one-off script that replaces selected color/style class
+  names in frontend JSX and CSS. These scripts are maintenance utilities, not
+  part of the running application; inspect their replacements before running.
+
+backend/:
+- Dockerfile: builds the Python API container.
+- requirements.txt: Python runtime dependencies.
+- app/main.py: creates the FastAPI app, connects and closes MongoDB at lifecycle
+  boundaries, configures CORS, mounts static uploads, includes API routes and
+  provides the authenticated WebSocket endpoint.
+- app/seed.py: clears application collections and inserts demo users and sample
+  social data. WARNING: this script deletes existing application records in
+  those collections before seeding; do not run it against data you need.
+- app/core/config.py: environment-backed project, JWT, MongoDB, upload and CORS
+  settings.
+- app/core/database.py: Motor client/database lifecycle and MongoDB indexes.
+- app/core/security.py: password hashing/checking and JWT creation/decoding.
+- app/api/deps.py: OAuth2 bearer-token dependency, current-user loading and
+  MongoDB document ID serialization.
+- app/api/v1/__init__.py: combines the API route modules under /api/v1.
+- app/api/v1/*.py: HTTP endpoints grouped by feature (listed below).
+- app/schemas/*.py: Pydantic request/response shapes for users, posts, stories,
+  chats and notifications.
+- app/utils/notifications.py: persists notifications and emits realtime events.
+- app/websockets/manager.py: tracks active sockets and conversation room users,
+  broadcasts online status, and sends events to users.
+- uploads/: local media storage, mounted by the API at /uploads.
+- test_app.py, test_integration.py: backend test files.
+- perf_test.py: script that calls several API endpoints and reports status and
+  response times; it expects a running API and seeded demo account.
+
+frontend/:
+- package.json: JavaScript dependencies and Vite scripts.
+- vite.config.js: React plugin, local dev server and backend proxies.
+- index.html and src/main.jsx: browser entry page and React mount point.
+- src/App.jsx: route tree, page lazy-loading, authenticated layout and global
+  navigation; also coordinates ClipFlow navigation from clips to chat.
+- src/index.css: Tailwind directives, base styling, scrollbar and story styles.
+- src/api/: small feature-specific HTTP wrappers built on api/client.js.
+- src/context/: shared React state providers for authentication, chat, sockets
+  and ClipFlow.
+- src/pages/: route-level screens, described below.
+- src/components/: reusable UI grouped by feature.
+- Dockerfile: builds the Vite production bundle, then copies it into Nginx.
+- nginx.conf: serves the single-page app and proxies API, upload and WebSocket
+  paths to the backend.
+
+Backend responsibilities
+------------------------
+FastAPI is the backend web framework. Uvicorn runs it as an ASGI service. The
+async Motor client talks to MongoDB, so HTTP handlers and database work use
+async functions. The application startup creates the database connection and
+ensures the upload directory exists. Shutdown closes the MongoDB client.
+
+All regular feature endpoints are grouped beneath /api/v1:
+- /auth (auth.py): register, log in using email or username, and fetch the
+  current user. Registration/login return a bearer access token and user data.
+- /users (users.py): search for users, retrieve suggestions and profiles, view
+  follower/following lists, edit the current profile, and follow/unfollow.
+- /posts (posts.py): create posts; retrieve home feed, explore feed, clips and
+  user posts; retrieve/delete a post; like or record a view; list/add comments;
+  bookmark a post; and list saved posts.
+- /stories (stories.py): create stories, fetch the stories feed, record views,
+  react to stories and delete stories.
+- /chat (chat.py): list or create conversations, fetch and send messages, react
+  to messages and mark a conversation read.
+- /notifications (notifications.py): list notifications, get unread count,
+  mark one read and mark all read.
+- /upload (upload.py): accept a file upload and provide its resulting media URL.
+
+The root GET / endpoint returns a simple API/service status response. FastAPI
+also generates interactive Swagger documentation at /docs and an OpenAPI
+document under /api/v1/openapi.json.
+
+Authentication and data model
+------------------------------
+Registration stores a bcrypt password hash, not the user's raw password.
+Successful registration and login issue a signed JWT. The frontend stores that
+token as echat_token in localStorage; Axios sends it in the Authorization
+Bearer header. The backend's current-user dependency verifies the JWT, loads
+the user and adds follower, following and post counts to the returned user
+object. The WebSocket also requires a valid JWT, supplied as a token query
+parameter when the connection is opened.
+
+MongoDB is schema-flexible, while Pydantic classes define and validate the
+application's API data contracts. Database indexes are initialized for common
+lookups and relationships. The collections used by the code include users,
+followers, posts, likes, comments, stories, story_views, conversations,
+messages, notifications and bookmarks. ObjectId values are serialized as
+string IDs for API responses. Other data commonly includes timestamps,
+relationship IDs, media URLs, read/view state, reactions and counters.
+
+Realtime communication
+-----------------------
+The browser-side SocketContext creates and maintains a WebSocket connection
+when an authenticated user has a token. It sends a ping periodically and
+reconnects with an increasing delay if the socket closes. Incoming events update
+shared state for:
+- presence_update: online/offline status.
+- user_typing: typing state scoped to a conversation.
+- new_message: informs ChatContext of an incoming message.
+- message_reaction: updates a message's reactions.
+- new_notification: updates the latest notification and unread count.
+- pong: heartbeat response.
+
+The backend's WebSocket endpoint authenticates the token, accepts the
+connection, handles ping, typing_start, typing_stop, join_room and leave_room,
+and delegates delivery to ConnectionManager. Notifications created by the
+notification utility are saved in MongoDB and immediately sent to the recipient
+if connected. The current connection manager keeps its socket registry in
+process memory; it is not a cross-server message broker.
+
+Frontend pages and shared state
+-------------------------------
+src/App.jsx wraps the app in BrowserRouter and AuthProvider. Login and register
+are public. Other routes pass through a protected layout, which shows a loading
+state while the current user is checked and redirects unauthenticated visitors
+to /login. The protected layout provides navigation, a right suggestions panel,
+and the create-post modal. Larger page modules are lazy-loaded.
+
+Routes/pages:
+- HomePage (/): main feed and stories entry point.
+- ExplorePage (/explore): discover posts and creators.
+- ClipsPage (/clips): short-form video browsing; works with ClipFlow state.
+- ChatPage (/messages): conversation list and active chat.
+- NotificationsPage (/notifications): notification inbox.
+- SavedPage (/saved): bookmarked posts.
+- ProfilePage (/profile and /profile/:username): current user's or another
+  user's profile, posts and social actions.
+- LoginPage (/login) and RegisterPage (/register): account entry screens.
+
+Context providers:
+- AuthContext: current user/token, login, registration, logout and profile
+  updates; checks a saved token against the current-user endpoint.
+- SocketContext: WebSocket lifecycle and realtime presence, typing, message,
+  reaction and notification state.
+- ChatContext: conversation/message loading, sending messages, reactions,
+  unread/read handling and responding to socket events.
+- ClipFlowContext: per-conversation ClipFlow toggles and preserving the clips
+  scroll position while an incoming message navigates to its chat.
+
+Reusable components:
+- common/: Avatar, desktop Sidebar, mobile Navbar and BottomNav, and RightPanel.
+- feed/: PostCard, StoriesBar, post/story creation modals, comments modal and
+  story viewer modal.
+- chat/: ChatSidebar, ChatWindow and CreateGroupModal.
+- profile/: ProfileHeader, PostGrid, EditProfileModal and FollowListModal.
+
+API client modules under frontend/src/api:
+- client.js: shared Axios instance, base URL, auth header and 401 handling.
+- auth.js, users.js, posts.js, stories.js, chat.js, notifications.js and
+  upload.js: feature-specific API functions used by pages and components.
+
+Styling and UI libraries
+------------------------
+Tailwind CSS supplies utility classes; tailwind.config.js defines the project's
+theme, and PostCSS/autoprefixer process CSS. index.css adds global base styles
+and small custom behaviors. lucide-react supplies icons. clsx conditionally
+combines class names and tailwind-merge resolves conflicting Tailwind classes.
+date-fns formats dates. React Router handles navigation. Vite provides the
+development server and production bundling. Axios performs HTTP requests.
+
+Docker and network layout
+-------------------------
+docker-compose.yml starts three services on a private Docker network:
+- mongodb: MongoDB 7, published on host port 27017, with a named persistent
+  volume for database files.
+- backend: built from backend/Dockerfile, listens on port 8000, uses the
+  mongodb service hostname, and mounts backend/uploads for media persistence.
+- frontend: built from frontend/Dockerfile and exposed on host port 3000.
+  Nginx serves the static React bundle and routes /api/, /uploads/ and /ws to
+  the backend service.
+
+The Compose environment provides the project name, API prefix, MongoDB
+connection, database name, upload directory and backend URL. For real
+deployment, configure secrets and allowed origins securely rather than relying
+on development defaults, and review the WebSocket connection strategy if
+running multiple backend instances.
+
+Run the project
+---------------
+Docker (from the repository root):
+    docker-compose up --build
+
+Then open:
+    Frontend:       http://localhost:3000
+    API:            http://localhost:8000
+    Swagger docs:   http://localhost:8000/docs
+    MongoDB:        localhost:27017
+
+Local development:
+1. Start MongoDB and configure the backend settings/environment as needed.
+2. In backend/, create and activate a Python virtual environment, then run:
+       pip install -r requirements.txt
+       python -m app.seed
+       uvicorn app.main:app --reload --port 8000
+3. In frontend/, install JavaScript dependencies and start Vite:
+       npm install
+       npm run dev
+4. Open http://localhost:5173. Vite proxies API and upload requests to
+   http://127.0.0.1:8000 and proxies WebSocket traffic to ws://127.0.0.1:8000.
+
+The seed script documents four demo users: dhanush, sarah_designer, alex_tech
+and elena_travel. Their seeded password is password123. Seed data is for local
+demonstration only.
+
+Tests and validation utilities
+------------------------------
+- backend/test_app.py: lightweight checks for imports, security helpers,
+  selected Pydantic schemas, the root endpoint and OpenAPI generation.
+- backend/test_integration.py: integration-test module; inspect its test setup
+  and requirements before running it, as it may need external services.
+- backend/perf_test.py: calls health, login, feed, explore, clips, stories,
+  conversations, notifications, saved posts, suggestions, profiles and search;
+  reports pass/fail and elapsed milliseconds. Requires a running backend and
+  the seeded account.
+- frontend/package.json defines npm run build, which runs the Vite production
+  build. There is no frontend test script declared in package.json.
+
+Quick mental model
+------------------
+React pages render the social and messaging interface. Reusable components
+handle the individual controls and content cards. Context providers coordinate
+user/session state and live events. Feature API modules call FastAPI through
+Axios. FastAPI authenticates requests, validates data, and operates on MongoDB.
+WebSockets push time-sensitive updates without polling. Uploaded files are
+stored under backend/uploads and served separately from JSON API responses.
+Docker Compose runs the database, API and web server together for local or
+container-based use.

@@ -1,0 +1,15 @@
+import apiClient from './client';
+
+export const uploadApi = {
+  uploadFile: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await apiClient.post('/upload/file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+};

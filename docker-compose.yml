@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: echat_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - echat_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: echat_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_NAME=EChat
+      - API_V1_STR=/api/v1
+      - SECRET_KEY=echat-production-super-secret-jwt-key-2025
+      - MONGODB_URL=mongodb://mongodb:27017
+      - DATABASE_NAME=echat_db
+      - UPLOAD_DIR=uploads
+      - BACKEND_URL=http://localhost:8000
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - mongodb
+    networks:
+      - echat_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: echat_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - echat_network
+
+volumes:
+  mongodb_data:
+
+networks:
+  echat_network:
+    driver: bridge
