@@ -1,5 +1,5 @@
 import logging
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorGridFSBucket
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -7,11 +7,17 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     client: AsyncIOMotorClient = None
     db: AsyncIOMotorDatabase = None
+    fs: AsyncIOMotorGridFSBucket = None
 
 db_manager = DatabaseManager()
 
 async def get_database() -> AsyncIOMotorDatabase:
     return db_manager.db
+
+async def get_gridfs() -> AsyncIOMotorGridFSBucket:
+    if db_manager.fs is None and db_manager.db is not None:
+        db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
+    return db_manager.fs
 
 async def connect_to_mongo():
     logger.info(f"Connecting to MongoDB at {settings.MONGODB_URL}...")
@@ -21,7 +27,8 @@ async def connect_to_mongo():
         minPoolSize=10
     )
     db_manager.db = db_manager.client[settings.DATABASE_NAME]
-    logger.info(f"Connected to database: {settings.DATABASE_NAME}")
+    db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
+    logger.info(f"Connected to database: {settings.DATABASE_NAME} (GridFS bucket initialized)")
     
     # Initialize indexes for performance and constraints
     await create_db_indexes()

@@ -1,14 +1,16 @@
 import os
 import json
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, FileResponse
+from gridfs.errors import NoFile
 from jose import jwt, JWTError
 
 from app.core.config import settings
-from app.core.database import connect_to_mongo, close_mongo_connection, db_manager
+from app.core.database import connect_to_mongo, close_mongo_connection, db_manager, get_gridfs
 from app.api.v1 import api_router
 from app.websockets.manager import ws_manager
 
@@ -19,7 +21,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     await connect_to_mongo()
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     yield
     # Shutdown
     await close_mongo_connection()
@@ -39,9 +40,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static uploads
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+# Serve uploaded media directly from MongoDB GridFS (with disk fallback for backward compatibility)
+@app.get("/uploads/{filename:path}")
+async def get_uploaded_media(filename: str):
+    # 1. Fetch and stream from MongoDB GridFS
+    fs = await get_gridfs()
+    if fs is not None:
+        try:
+            grid_out = await fs.open_download_stream_by_name(filename)
+            content_type = None
+            if grid_out.metadata:
+                content_type = grid_out.metadata.get("contentType")
+            if not content_type:
+                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+            async def file_streamer():
+                try:
+                    while chunk := await grid_out.readchunk():
+                        yield chunk
+                finally:
+                    grid_out.close()
+
+            return StreamingResponse(
+                file_streamer(),
+                media_type=content_type,
+                headers={
+                    "Content-Length": str(grid_out.length),
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "Content-Disposition": f'inline; filename="{grid_out.filename or filename}"'
+                }
+            )
+        except NoFile:
+            pass
+        except Exception as e:
+            logger.error(f"Error streaming {filename} from GridFS: {e}")
+
+    # 2. Fallback to local disk if file exists on disk
+    local_path = os.path.join(settings.UPLOAD_DIR, filename)
+    if os.path.isfile(local_path):
+        return FileResponse(local_path)
+
+    raise HTTPException(status_code=404, detail="File not found")
 
 # Include API v1 Router
 app.include_router(api_router, prefix=settings.API_V1_STR)

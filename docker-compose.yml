@@ -26,10 +26,7 @@ services:
       - SECRET_KEY=echat-production-super-secret-jwt-key-2025
       - MONGODB_URL=mongodb://mongodb:27017
       - DATABASE_NAME=echat_db
-      - UPLOAD_DIR=uploads
       - BACKEND_URL=http://localhost:8000
-    volumes:
-      - ./backend/uploads:/app/uploads
     depends_on:
       - mongodb
     networks:

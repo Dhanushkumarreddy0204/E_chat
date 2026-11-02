@@ -1,8 +1,11 @@
 import os
 import uuid
-import shutil
+import mimetypes
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+
 from app.core.config import settings
+from app.core.database import get_gridfs
 from app.api.deps import get_current_user
 from app.schemas.user import UserOut
 
@@ -18,11 +21,9 @@ ALLOWED_EXTENSIONS = {
 @router.post("/file")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: UserOut = Depends(get_current_user)
+    current_user: UserOut = Depends(get_current_user),
+    fs: AsyncIOMotorGridFSBucket = Depends(get_gridfs)
 ):
-    upload_dir = settings.UPLOAD_DIR
-    os.makedirs(upload_dir, exist_ok=True)
-
     file_ext = os.path.splitext(file.filename or "")[1].lower()
     
     # Determine type
@@ -34,18 +35,46 @@ async def upload_file(
 
     # Generate unique filename
     unique_filename = f"{uuid.uuid4().hex}{file_ext}"
-    file_path = os.path.join(upload_dir, unique_filename)
+    content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
-    try:
-        # Standard async streaming chunk write with fallback
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        file_size = os.path.getsize(file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
-    finally:
-        await file.close()
+    file_size = 0
+    if fs is not None:
+        grid_in = fs.open_upload_stream(
+            unique_filename,
+            metadata={
+                "contentType": content_type,
+                "filename": file.filename,
+                "media_type": media_type,
+                "uploader_id": str(current_user.id)
+            }
+        )
+        try:
+            while chunk := await file.read(1024 * 1024):
+                await grid_in.write(chunk)
+                file_size += len(chunk)
+            await grid_in.close()
+        except Exception as e:
+            try:
+                grid_in.abort()
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=f"Failed to upload media to MongoDB: {str(e)}")
+        finally:
+            await file.close()
+    else:
+        # Fallback to local disk if DB/GridFS is unavailable (e.g. offline unit testing)
+        upload_dir = settings.UPLOAD_DIR
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, unique_filename)
+        try:
+            with open(file_path, "wb") as buffer:
+                while chunk := await file.read(1024 * 1024):
+                    buffer.write(chunk)
+                    file_size += len(chunk)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        finally:
+            await file.close()
 
     url = f"{settings.BACKEND_URL}/uploads/{unique_filename}"
     

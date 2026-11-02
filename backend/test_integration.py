@@ -289,4 +289,12 @@ def test_authenticated_social_chat_and_realtime_flows():
             upload_path = os.path.join(settings.UPLOAD_DIR, uploaded_name)
             if os.path.exists(upload_path):
                 os.remove(upload_path)
+            try:
+                import gridfs
+                gfs = gridfs.GridFS(db)
+                grid_file = gfs.find_one({"filename": uploaded_name})
+                if grid_file:
+                    gfs.delete(grid_file._id)
+            except Exception:
+                pass
         mongo.close()
