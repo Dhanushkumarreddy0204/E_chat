@@ -33,7 +33,7 @@ EChat connects directly to **MongoDB Atlas** for both application data and media
 
 ### Step 1: Create or Access Your Cluster
 1. Sign in to your [MongoDB Atlas Console](https://cloud.mongodb.com/).
-2. Locate or create your cluster (e.g. `echatcluster.lkhvkjw.mongodb.net` or `EChatCluster`).
+2. Locate or create your cluster (e.g. `cluster0.<unique-id>.mongodb.net` or `EChatCluster`).
 
 ### Step 2: Create a Database User
 1. In the Atlas sidebar, navigate to **Security** → **Database Access**.
@@ -55,7 +55,7 @@ EChat connects directly to **MongoDB Atlas** for both application data and media
 3. Select **Drivers** (Python / Motor / PyMongo).
 4. Copy the connection string, which will look like:
    ```
-   mongodb+srv://<db_username>:<db_password>@echatcluster.lkhvkjw.mongodb.net/?retryWrites=true&w=majority
+   mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/?retryWrites=true&w=majority
    ```
 
 ---
@@ -70,7 +70,7 @@ cp .env.example .env
 
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
-| `MONGODB_URL` | MongoDB Atlas SRV connection string | `mongodb+srv://<username>:<password>@echatcluster.lkhvkjw.mongodb.net/?retryWrites=true&w=majority` |
+| `MONGODB_URL` | MongoDB Atlas SRV connection string | `mongodb+srv://<username>:<password>@<cluster-address>.mongodb.net/?retryWrites=true&w=majority` |
 | `DATABASE_NAME` | Target database name on the Atlas cluster | `EChatCluster` |
 | `SECRET_KEY` | JWT secret key for token issuance & signing | Random 64-char string |
 | `BACKEND_URL` | Public-facing backend service URL | `http://localhost:8000` |

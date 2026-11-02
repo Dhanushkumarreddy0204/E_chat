@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # MongoDB Atlas Connection
     MONGODB_URL: str = os.getenv(
         "MONGODB_URL",
-        "mongodb+srv://<db_username>:<db_password>@echatcluster.lkhvkjw.mongodb.net/?retryWrites=true&w=majority"
+        "mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/?retryWrites=true&w=majority"
     )
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "EChatCluster")
     

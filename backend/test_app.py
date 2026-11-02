@@ -62,7 +62,7 @@ def test_imports_and_schemas():
 
     # Test MongoDB URI Masking & Atlas URI format handling
     from app.core.database import mask_mongodb_uri
-    sample_atlas = "mongodb+srv://admin_user:secret_pass123@echatcluster.lkhvkjw.mongodb.net/?retryWrites=true&w=majority"
+    sample_atlas = "mongodb+srv://admin_user:secret_pass123@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority"
     masked = mask_mongodb_uri(sample_atlas)
     assert "secret_pass123" not in masked
     assert "admin_user:****@" in masked
