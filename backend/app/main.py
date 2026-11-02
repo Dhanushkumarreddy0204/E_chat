@@ -10,7 +10,7 @@ from gridfs.errors import NoFile
 from jose import jwt, JWTError
 
 from app.core.config import settings
-from app.core.database import connect_to_mongo, close_mongo_connection, db_manager, get_gridfs
+from app.core.database import connect_to_mongo, close_mongo_connection, db_manager, get_gridfs, is_mongo_connected
 from app.api.v1 import api_router
 from app.websockets.manager import ws_manager
 
@@ -92,6 +92,16 @@ async def root():
         "service": "EChat Backend API",
         "version": "1.0.0",
         "docs": "/docs"
+    }
+
+@app.get("/health")
+async def health_check():
+    db_ok = await is_mongo_connected()
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "database": "connected" if db_ok else "disconnected",
+        "service": settings.PROJECT_NAME,
+        "version": "1.0.0"
     }
 
 @app.websocket("/ws")

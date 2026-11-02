@@ -50,7 +50,7 @@ def test_imports_and_schemas():
     print(f"[PASS] OpenAPI specification generated successfully ({len(schema['paths'])} endpoints)!")
 
     # Test FastAPI Root Endpoint
-    from app.main import root
+    from app.main import root, health_check
     coro = root()
     try:
         coro.send(None)
@@ -59,6 +59,20 @@ def test_imports_and_schemas():
         assert root_res.get("service") == "EChat Backend API"
         assert root_res.get("status") == "online"
         print("[PASS] FastAPI Root Endpoint test passed!")
+
+    # Test MongoDB URI Masking & Atlas URI format handling
+    from app.core.database import mask_mongodb_uri
+    sample_atlas = "mongodb+srv://admin_user:secret_pass123@echatcluster.lkhvkjw.mongodb.net/?retryWrites=true&w=majority"
+    masked = mask_mongodb_uri(sample_atlas)
+    assert "secret_pass123" not in masked
+    assert "admin_user:****@" in masked
+    print("[PASS] MongoDB URI credential masking verified!")
+
+    # Test CORS Origins parsing
+    from app.core.config import Settings
+    cors_test = Settings.assemble_cors_origins("https://echat.app, https://admin.echat.app")
+    assert cors_test == ["https://echat.app", "https://admin.echat.app"]
+    print("[PASS] CORS comma-separated origins parsing verified!")
 
     print("\n==========================================")
     print("ALL BACKEND SUITE TESTS PASSED (100% OK)")

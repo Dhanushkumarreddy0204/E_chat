@@ -1,13 +1,21 @@
+import re
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorGridFSBucket
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+def mask_mongodb_uri(uri: str) -> str:
+    """Mask credentials in MongoDB connection string for secure logging."""
+    if not uri:
+        return ""
+    return re.sub(r":([^/@]+)@", r":****@", uri)
+
 class DatabaseManager:
     client: AsyncIOMotorClient = None
     db: AsyncIOMotorDatabase = None
     fs: AsyncIOMotorGridFSBucket = None
+    connected: bool = False
 
 db_manager = DatabaseManager()
 
@@ -19,30 +27,66 @@ async def get_gridfs() -> AsyncIOMotorGridFSBucket:
         db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
     return db_manager.fs
 
+async def is_mongo_connected() -> bool:
+    """Check if MongoDB connection is active and responsive."""
+    if not db_manager.client:
+        return False
+    try:
+        await db_manager.client.admin.command("ping")
+        return True
+    except Exception:
+        return False
+
 async def connect_to_mongo():
-    logger.info(f"Connecting to MongoDB at {settings.MONGODB_URL}...")
-    db_manager.client = AsyncIOMotorClient(
-        settings.MONGODB_URL,
-        maxPoolSize=50,
-        minPoolSize=10
-    )
-    db_manager.db = db_manager.client[settings.DATABASE_NAME]
-    db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
-    logger.info(f"Connected to database: {settings.DATABASE_NAME} (GridFS bucket initialized)")
+    """Initialize MongoDB Atlas / Motor client, validate connection, and create indexes."""
+    masked_url = mask_mongodb_uri(settings.MONGODB_URL)
+    logger.info(f"Connecting to MongoDB at {masked_url}...")
     
-    # Initialize indexes for performance and constraints
-    await create_db_indexes()
+    try:
+        db_manager.client = AsyncIOMotorClient(
+            settings.MONGODB_URL,
+            maxPoolSize=50,
+            minPoolSize=10,
+            serverSelectionTimeoutMS=5000,
+        )
+        
+        # Validate connection via ping
+        await db_manager.client.admin.command("ping")
+        db_manager.db = db_manager.client[settings.DATABASE_NAME]
+        db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
+        db_manager.connected = True
+        logger.info(f"Successfully connected to MongoDB ({settings.DATABASE_NAME}) & initialized GridFS bucket.")
+        
+        # Initialize indexes for performance and constraints
+        await create_db_indexes()
+    except Exception as e:
+        db_manager.connected = False
+        # Fallback reference to db/fs so app does not crash on uninitialized attributes
+        if db_manager.client:
+            db_manager.db = db_manager.client[settings.DATABASE_NAME]
+            db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
+        logger.error(
+            f"Failed to establish live connection to MongoDB at {masked_url}: {e}\n"
+            "Please check:\n"
+            "  1. Network Access (IP whitelist) in MongoDB Atlas includes your current IP or 0.0.0.0/0.\n"
+            "  2. Database user credentials (username and password) in MONGODB_URL.\n"
+            "  3. Cluster status in MongoDB Atlas dashboard."
+        )
 
 async def close_mongo_connection():
+    """Graceful shutdown of MongoDB connections."""
     logger.info("Closing MongoDB connection...")
     if db_manager.client:
         db_manager.client.close()
+        db_manager.connected = False
     logger.info("MongoDB connection closed.")
 
 async def create_db_indexes():
     """Create essential MongoDB indexes for users, posts, chats, stories, etc."""
     try:
         db = db_manager.db
+        if db is None:
+            return
         
         # User indexes
         await db.users.create_index("username", unique=True)
@@ -80,6 +124,6 @@ async def create_db_indexes():
         # Bookmarks
         await db.bookmarks.create_index([("user_id", 1), ("post_id", 1)], unique=True)
         
-        logger.info("Database indexes successfully initialized.")
+        logger.info("Database indexes successfully verified and initialized.")
     except Exception as e:
-        logger.error(f"Error creating database indexes: {e}")
+        logger.warning(f"Note on creating database indexes: {e}")

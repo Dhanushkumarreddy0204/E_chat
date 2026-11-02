@@ -3,10 +3,11 @@ from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 from app.core.security import get_password_hash
+from app.core.database import mask_mongodb_uri
 
 async def seed_data():
-    print(f"Connecting to MongoDB at {settings.MONGODB_URL}...")
-    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    print(f"Connecting to MongoDB at {mask_mongodb_uri(settings.MONGODB_URL)}...")
+    client = AsyncIOMotorClient(settings.MONGODB_URL, serverSelectionTimeoutMS=5000)
     db = client[settings.DATABASE_NAME]
 
     print("Cleaning existing database...")
