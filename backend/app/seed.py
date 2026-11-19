@@ -1,3 +1,4 @@
+import sys
 import asyncio
 from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -5,10 +6,31 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.core.database import mask_mongodb_uri
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 async def seed_data():
-    print(f"Connecting to MongoDB at {mask_mongodb_uri(settings.MONGODB_URL)}...")
-    client = AsyncIOMotorClient(settings.MONGODB_URL, serverSelectionTimeoutMS=5000)
+    masked_url = mask_mongodb_uri(settings.MONGODB_URL)
+    print("Settings loaded successfully!")
+    print(f"CORS origins configured: {settings.BACKEND_CORS_ORIGINS}")
+    print(f"Target Database: {settings.DATABASE_NAME}")
+    print(f"Connecting to MongoDB at {masked_url}...")
+
+    if "<cluster-address>" in settings.MONGODB_URL or "<db_username>" in settings.MONGODB_URL:
+        print("\n[NOTE] MONGODB_URL contains placeholder credentials (<db_username>, <cluster-address>).")
+        print("To seed records to your MongoDB Atlas cluster, update backend/.env with your actual Atlas user and host.")
+        return
+
+    client = AsyncIOMotorClient(settings.MONGODB_URL, serverSelectionTimeoutMS=3000)
     db = client[settings.DATABASE_NAME]
+
+    try:
+        await client.admin.command("ping")
+    except Exception as exc:
+        print(f"MongoDB connection probe to {masked_url}: {exc}")
+        print("Provide valid MongoDB Atlas credentials and network access to populate database records.")
+        client.close()
+        return
 
     print("Cleaning existing database...")
     await db.users.delete_many({})

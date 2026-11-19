@@ -60,6 +60,22 @@ def test_imports_and_schemas():
         assert root_res.get("status") == "online"
         print("[PASS] FastAPI Root Endpoint test passed!")
 
+    # Test Health Endpoint
+    h_coro = health_check()
+    try:
+        h_coro.send(None)
+    except StopIteration as exc:
+        health_res = exc.value
+        assert "status" in health_res
+        assert "database" in health_res
+        print(f"[PASS] Health check endpoint verified! (status={health_res['status']}, database={health_res['database']})")
+
+    # Test placeholder detection logic (no network required)
+    from app.core.database import _is_placeholder_url, mask_mongodb_uri
+    assert _is_placeholder_url("mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/") is True
+    assert _is_placeholder_url("mongodb+srv://real_user:real_pass@cluster0.abc12.mongodb.net/") is False
+    print("[PASS] Placeholder URL detection verified!")
+
     # Test MongoDB URI Masking & Atlas URI format handling
     from app.core.database import mask_mongodb_uri
     sample_atlas = "mongodb+srv://admin_user:secret_pass123@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority"

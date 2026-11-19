@@ -37,11 +37,29 @@ async def is_mongo_connected() -> bool:
     except Exception:
         return False
 
+_PLACEHOLDER_TOKENS = ("<db_username>", "<db_password>", "<cluster-address>")
+
+def _is_placeholder_url(url: str) -> bool:
+    """Return True if the MONGODB_URL still contains template placeholder tokens."""
+    return any(token in url for token in _PLACEHOLDER_TOKENS)
+
 async def connect_to_mongo():
     """Initialize MongoDB Atlas / Motor client, validate connection, and create indexes."""
     masked_url = mask_mongodb_uri(settings.MONGODB_URL)
+
+    # Detect unconfigured placeholder credentials and skip the live-connection attempt.
+    if _is_placeholder_url(settings.MONGODB_URL):
+        logger.warning(
+            "MONGODB_URL contains placeholder values (%s). "
+            "Update backend/.env with your real MongoDB Atlas credentials "
+            "before starting the server in production.",
+            masked_url,
+        )
+        db_manager.connected = False
+        return
+
     logger.info(f"Connecting to MongoDB at {masked_url}...")
-    
+
     try:
         db_manager.client = AsyncIOMotorClient(
             settings.MONGODB_URL,
@@ -49,19 +67,22 @@ async def connect_to_mongo():
             minPoolSize=10,
             serverSelectionTimeoutMS=5000,
         )
-        
+
         # Validate connection via ping
         await db_manager.client.admin.command("ping")
         db_manager.db = db_manager.client[settings.DATABASE_NAME]
         db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
         db_manager.connected = True
-        logger.info(f"Successfully connected to MongoDB ({settings.DATABASE_NAME}) & initialized GridFS bucket.")
-        
+        logger.info(
+            f"Successfully connected to MongoDB ({settings.DATABASE_NAME}) & initialized GridFS bucket."
+        )
+
         # Initialize indexes for performance and constraints
         await create_db_indexes()
+
     except Exception as e:
         db_manager.connected = False
-        # Fallback reference to db/fs so app does not crash on uninitialized attributes
+        # Keep db/fs references alive so the app can still serve non-DB routes.
         if db_manager.client:
             db_manager.db = db_manager.client[settings.DATABASE_NAME]
             db_manager.fs = AsyncIOMotorGridFSBucket(db_manager.db)
