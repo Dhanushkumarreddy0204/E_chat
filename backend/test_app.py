@@ -70,11 +70,51 @@ def test_imports_and_schemas():
         assert "database" in health_res
         print(f"[PASS] Health check endpoint verified! (status={health_res['status']}, database={health_res['database']})")
 
-    # Test placeholder detection logic (no network required)
-    from app.core.database import _is_placeholder_url, mask_mongodb_uri
+    # Test placeholder detection and fail-fast startup behavior
+    from app.core.database import _is_placeholder_url, mask_mongodb_uri, clean_mongodb_uri, get_database, connect_to_mongo
+    from fastapi import HTTPException
     assert _is_placeholder_url("mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/") is True
     assert _is_placeholder_url("mongodb+srv://real_user:real_pass@cluster0.abc12.mongodb.net/") is False
     print("[PASS] Placeholder URL detection verified!")
+
+    # Test clean_mongodb_uri
+    cleaned = clean_mongodb_uri("mongodb+srv://<admin>:<pass123>@cluster0.abc12.mongodb.net/")
+    assert "<" not in cleaned and ">" not in cleaned
+    assert "admin:pass123@" in cleaned
+    print("[PASS] clean_mongodb_uri strips accidental angle brackets!")
+
+    # Test that get_database raises HTTPException(503) when db is uninitialized
+    import app.core.database as db_mod
+    original_db = db_mod.db
+    db_mod.db = None
+    try:
+        coro = get_database()
+        try:
+            coro.send(None)
+        except StopIteration:
+            pass
+        assert False, "get_database should have raised HTTPException 503"
+    except HTTPException as http_exc:
+        assert http_exc.status_code == 503
+        print("[PASS] get_database() raises 503 Service Unavailable when db is uninitialized (prevents crashes)!")
+    finally:
+        db_mod.db = original_db
+
+    # Test that connect_to_mongo raises RuntimeError on placeholder URL (fail fast on startup)
+    orig_url = settings.MONGODB_URL
+    try:
+        settings.MONGODB_URL = "mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/"
+        coro = connect_to_mongo()
+        try:
+            coro.send(None)
+        except StopIteration:
+            pass
+        assert False, "connect_to_mongo should have failed on placeholder URL"
+    except RuntimeError as r_exc:
+        assert "placeholder" in str(r_exc).lower()
+        print("[PASS] connect_to_mongo() fails fast with descriptive RuntimeError on placeholder URL!")
+    finally:
+        settings.MONGODB_URL = orig_url
 
     # Test MongoDB URI Masking & Atlas URI format handling
     from app.core.database import mask_mongodb_uri
