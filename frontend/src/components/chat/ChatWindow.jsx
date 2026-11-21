@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Send,
   Image,
@@ -20,12 +21,17 @@ import { uploadApi } from '../../api/upload';
 import { Avatar } from '../common/Avatar';
 
 export const ChatWindow = ({ onBack }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { activeConversation, messages, sendMessage, reactToMessage, loadingMessages } = useChat();
   const { isUserOnline, typingUsers, sendTyping } = useSocket();
-  const { isClipFlowEnabledFor, toggleClipFlow } = useClipFlow();
+  const { isClipFlowEnabledFor, toggleClipFlow, triggeringConvId, shouldRestoreClips } = useClipFlow();
 
   const clipFlowEnabled = activeConversation ? isClipFlowEnabledFor(activeConversation.id) : false;
+  const isClipFlowTriggered = Boolean(
+    (triggeringConvId && activeConversation && triggeringConvId === activeConversation.id) ||
+    shouldRestoreClips
+  );
 
   const [inputContent, setInputContent] = useState('');
   const [mediaFile, setMediaFile] = useState(null);
@@ -118,6 +124,11 @@ export const ChatWindow = ({ onBack }) => {
       
       const recipientIds = activeConversation.participants.map(p => p.id);
       sendTyping(activeConversation.id, recipientIds, false);
+
+      // Automatically return directly to Clips if user arrived here via ClipFlow
+      if (isClipFlowTriggered) {
+        navigate('/clips');
+      }
     } catch (err) {
       console.error('Error sending message:', err);
     } finally {
@@ -152,7 +163,19 @@ export const ChatWindow = ({ onBack }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Back to Clips button when ClipFlow was triggered */}
+          {isClipFlowTriggered && (
+            <button
+              onClick={() => navigate('/clips')}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-500 text-white text-xs font-semibold hover:bg-brand-600 transition-colors shadow-xs"
+              title="Return to your saved position on Clips"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Back to Clips</span>
+            </button>
+          )}
+
           {/* ClipFlow toggle */}
           <button
             id={`clipflow-toggle-${activeConversation?.id}`}
@@ -173,6 +196,22 @@ export const ChatWindow = ({ onBack }) => {
           </button>
         </div>
       </div>
+
+      {/* ClipFlow active banner */}
+      {isClipFlowTriggered && (
+        <div className="bg-brand-50 border-b border-brand-200 px-3 sm:px-4 py-1.5 flex items-center justify-between text-xs text-brand-800">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Zap className="w-3.5 h-3.5 text-brand-600 fill-brand-500 shrink-0" />
+            <span className="truncate">ClipFlow active: Replying will return you directly to your Clip.</span>
+          </div>
+          <button
+            onClick={() => navigate('/clips')}
+            className="text-brand-600 font-bold hover:underline shrink-0 ml-2"
+          >
+            Return now
+          </button>
+        </div>
+      )}
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5">

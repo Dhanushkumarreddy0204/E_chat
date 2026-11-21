@@ -51,8 +51,10 @@ const ClipFlowWatcher = () => {
     const convId = latestMessage.conversation_id;
     if (!isClipFlowEnabledFor(convId)) return;
 
-    const conversation = conversations.find((c) => c.id === convId);
-    if (!conversation) return;
+    let conversation = conversations.find((c) => c.id === convId);
+    if (!conversation) {
+      conversation = { id: convId, participants: [] };
+    }
 
     lastHandledMessageIdRef.current = latestMessage.id;
 
@@ -162,7 +164,12 @@ const ProtectedLayout = () => {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <AuthProvider>
         <Suspense fallback={<div className="min-h-screen w-full flex items-center justify-center bg-background"><div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>}>
           <Routes>

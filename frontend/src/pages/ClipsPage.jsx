@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { postsApi } from '../api/posts';
-import { Heart, MessageCircle, Share2, Music, User } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Music, User, Play, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react';
 import { Avatar } from '../components/common/Avatar';
 import { CommentsModal } from '../components/feed/CommentsModal';
 import { useNavigate } from 'react-router-dom';
@@ -162,6 +162,10 @@ const ClipItem = ({ clip, isActive, onSetActive, onOpenComments }) => {
   const [isLiked, setIsLiked] = useState(clip.is_liked);
   const [likesCount, setLikesCount] = useState(clip.likes_count);
   const [commentsCount, setCommentsCount] = useState(clip.comments_count);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     setCommentsCount(clip.comments_count);
@@ -185,21 +189,70 @@ const ClipItem = ({ clip, isActive, onSetActive, onOpenComments }) => {
   }, [onSetActive]);
 
   useEffect(() => {
-    if (isActive && videoRef.current) {
-      videoRef.current.play().catch((e) => console.log('Autoplay prevented', e));
-      postsApi.viewPost(clip.id).catch(() => {});
-    } else if (videoRef.current) {
-      videoRef.current.pause();
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isActive) {
+      video.muted = isMuted;
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+            setHasError(false);
+            postsApi.viewPost(clip.id).catch(() => {});
+          })
+          .catch((e) => {
+            console.log('Autoplay handled:', e);
+            // If sound prevented autoplay, mute and try again
+            if (!video.muted) {
+              video.muted = true;
+              setIsMuted(true);
+              video.play()
+                .then(() => {
+                  setIsPlaying(true);
+                  setIsBuffering(false);
+                })
+                .catch(() => {
+                  setIsPlaying(false);
+                  setIsBuffering(false);
+                });
+            } else {
+              setIsPlaying(false);
+              setIsBuffering(false);
+            }
+          });
+      }
+    } else {
+      video.pause();
+      setIsPlaying(false);
     }
-  }, [isActive, clip.id]);
+  }, [isActive, isMuted, clip.id]);
 
   const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      video.play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        })
+        .catch((e) => console.log('Play error:', e));
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleMute = (e) => {
+    e.stopPropagation();
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
     if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-      } else {
-        videoRef.current.pause();
-      }
+      videoRef.current.muted = nextMuted;
     }
   };
 
@@ -219,18 +272,90 @@ const ClipItem = ({ clip, isActive, onSetActive, onOpenComments }) => {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-black"
+      className="w-full h-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-black select-none"
       onClick={togglePlay}
     >
       {/* Video Player */}
-      <video
-        ref={videoRef}
-        src={mediaUrl}
-        className="w-full h-full object-cover md:max-w-[450px]"
-        loop
-        playsInline
-        muted={false}
-      />
+      {mediaUrl && (
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          className="w-full h-full object-cover md:max-w-[450px]"
+          loop
+          playsInline
+          webkit-playsinline="true"
+          preload="auto"
+          muted={isMuted}
+          onPlay={() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          }}
+          onCanPlay={() => setIsBuffering(false)}
+          onError={() => {
+            setHasError(true);
+            setIsBuffering(false);
+            setIsPlaying(false);
+          }}
+        />
+      )}
+
+      {/* Buffering Spinner */}
+      {isBuffering && !hasError && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center">
+            <Loader2 className="w-6 h-6 text-white animate-spin" />
+          </div>
+        </div>
+      )}
+
+      {/* Centered Play Button when paused */}
+      {!isPlaying && !isBuffering && !hasError && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-16 h-16 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center shadow-lg border border-white/20 transition-transform transform scale-100 hover:scale-110">
+            <Play className="w-8 h-8 text-white ml-1 fill-white" />
+          </div>
+        </div>
+      )}
+
+      {/* Error state */}
+      {hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-white p-4 text-center z-10 pointer-events-auto">
+          <AlertCircle className="w-10 h-10 text-brand-400 mb-2" />
+          <p className="text-sm font-semibold">Video Unavailable</p>
+          <p className="text-xs text-white/70 mt-1 max-w-xs">
+            The video could not be loaded or is in an unsupported format.
+          </p>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setHasError(false);
+              setIsBuffering(true);
+              if (videoRef.current) {
+                videoRef.current.load();
+                videoRef.current.play().catch(() => {});
+              }
+            }}
+            className="mt-3 px-3 py-1.5 bg-brand-500 rounded-lg text-xs font-bold hover:bg-brand-600 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Top Controls: Mute/Unmute */}
+      <button
+        onClick={toggleMute}
+        className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center text-white hover:bg-black/70 transition-colors pointer-events-auto shadow-md"
+        title={isMuted ? 'Unmute' : 'Mute'}
+      >
+        {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+      </button>
 
       {/* Overlay Information */}
       <div className="absolute inset-0 md:max-w-[450px] mx-auto pointer-events-none">

@@ -1,9 +1,11 @@
 import os
 import json
 import logging
+import inspect
 import mimetypes
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from typing import Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from gridfs.errors import NoFile
@@ -16,6 +18,63 @@ from app.websockets.manager import ws_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+MEDIA_MIME_TYPES = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".ogv": "video/ogg",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+}
+
+def resolve_content_type(filename: str, metadata_type: Optional[str] = None) -> str:
+    if metadata_type and metadata_type != "application/octet-stream":
+        return metadata_type
+    ext = os.path.splitext(filename.lower())[1]
+    if ext in MEDIA_MIME_TYPES:
+        return MEDIA_MIME_TYPES[ext]
+    guessed = mimetypes.guess_type(filename)[0]
+    return guessed or "application/octet-stream"
+
+def parse_byte_range(range_header: Optional[str], file_size: int) -> Optional[tuple[int, int]]:
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+    try:
+        raw = range_header.replace("bytes=", "").strip()
+        parts = raw.split("-")
+        start_str = parts[0].strip()
+        end_str = parts[1].strip() if len(parts) > 1 else ""
+
+        if start_str and end_str:
+            start = int(start_str)
+            end = int(end_str)
+        elif start_str:
+            start = int(start_str)
+            end = file_size - 1
+        elif end_str:
+            start = file_size - int(end_str)
+            end = file_size - 1
+        else:
+            return None
+
+        if start < 0 or start >= file_size or end < start:
+            return None
+        end = min(end, file_size - 1)
+        return start, end
+    except Exception:
+        return None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,35 +100,74 @@ app.add_middleware(
 )
 
 # Serve uploaded media directly from MongoDB GridFS (with disk fallback for backward compatibility)
+# Supports HTTP 206 Partial Content and Range headers essential for video seeking/playback in modern browsers.
 @app.get("/uploads/{filename:path}")
-async def get_uploaded_media(filename: str):
+async def get_uploaded_media(filename: str, request: Request):
+    range_header = request.headers.get("range")
+
     # 1. Fetch and stream from MongoDB GridFS
     fs = await get_gridfs()
     if fs is not None:
         try:
             grid_out = await fs.open_download_stream_by_name(filename)
-            content_type = None
-            if grid_out.metadata:
-                content_type = grid_out.metadata.get("contentType")
-            if not content_type:
-                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-            async def file_streamer():
-                try:
-                    while chunk := await grid_out.readchunk():
-                        yield chunk
-                finally:
-                    grid_out.close()
-
-            return StreamingResponse(
-                file_streamer(),
-                media_type=content_type,
-                headers={
-                    "Content-Length": str(grid_out.length),
-                    "Cache-Control": "public, max-age=31536000, immutable",
-                    "Content-Disposition": f'inline; filename="{grid_out.filename or filename}"'
-                }
+            total_size = grid_out.length
+            content_type = resolve_content_type(
+                filename,
+                grid_out.metadata.get("contentType") if grid_out.metadata else None
             )
+            byte_range = parse_byte_range(range_header, total_size)
+
+            if byte_range:
+                start, end = byte_range
+                content_length = end - start + 1
+                seek_res = grid_out.seek(start)
+                if inspect.isawaitable(seek_res):
+                    await seek_res
+
+                async def range_streamer():
+                    bytes_remaining = content_length
+                    try:
+                        while bytes_remaining > 0:
+                            chunk_size = min(bytes_remaining, 256 * 1024)
+                            chunk = await grid_out.read(chunk_size)
+                            if not chunk:
+                                break
+                            bytes_remaining -= len(chunk)
+                            yield chunk
+                    finally:
+                        grid_out.close()
+
+                return StreamingResponse(
+                    range_streamer(),
+                    status_code=206,
+                    media_type=content_type,
+                    headers={
+                        "Content-Range": f"bytes {start}-{end}/{total_size}",
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": str(content_length),
+                        "Cache-Control": "public, max-age=31536000, immutable",
+                        "Content-Disposition": f'inline; filename="{grid_out.filename or filename}"'
+                    }
+                )
+            else:
+                async def file_streamer():
+                    try:
+                        while chunk := await grid_out.readchunk():
+                            yield chunk
+                    finally:
+                        grid_out.close()
+
+                return StreamingResponse(
+                    file_streamer(),
+                    status_code=200,
+                    media_type=content_type,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": str(total_size),
+                        "Cache-Control": "public, max-age=31536000, immutable",
+                        "Content-Disposition": f'inline; filename="{grid_out.filename or filename}"'
+                    }
+                )
         except NoFile:
             pass
         except Exception as e:
@@ -78,7 +176,39 @@ async def get_uploaded_media(filename: str):
     # 2. Fallback to local disk if file exists on disk
     local_path = os.path.join(settings.UPLOAD_DIR, filename)
     if os.path.isfile(local_path):
-        return FileResponse(local_path)
+        total_size = os.path.getsize(local_path)
+        content_type = resolve_content_type(filename)
+        byte_range = parse_byte_range(range_header, total_size)
+
+        if byte_range:
+            start, end = byte_range
+            content_length = end - start + 1
+
+            def file_range_generator():
+                with open(local_path, "rb") as f:
+                    f.seek(start)
+                    remaining = content_length
+                    while remaining > 0:
+                        chunk = f.read(min(remaining, 256 * 1024))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        yield chunk
+
+            return StreamingResponse(
+                file_range_generator(),
+                status_code=206,
+                media_type=content_type,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(content_length),
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "Content-Disposition": f'inline; filename="{filename}"'
+                }
+            )
+
+        return FileResponse(local_path, media_type=content_type, headers={"Accept-Ranges": "bytes"})
 
     raise HTTPException(status_code=404, detail="File not found")
 
