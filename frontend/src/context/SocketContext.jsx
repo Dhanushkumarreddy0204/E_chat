@@ -43,7 +43,6 @@ export const SocketProvider = ({ children }) => {
 
       ws.onopen = () => {
         reconnectDelay = 500;
-        console.log('WebSocket connected successfully');
         clearHeartbeat();
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -108,12 +107,11 @@ export const SocketProvider = ({ children }) => {
         }
       };
 
-      ws.onerror = (err) => {
-        console.warn('WebSocket connection failed; retrying.', err);
+      ws.onerror = () => {
+        // The close handler owns reconnection and applies backoff.
       };
 
       ws.onclose = () => {
-        console.log('WebSocket connection closed.');
         clearHeartbeat();
         if (wsRef.current === ws) wsRef.current = null;
         if (!stopped) {

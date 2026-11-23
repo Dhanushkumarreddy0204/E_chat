@@ -27,8 +27,7 @@ export const AuthProvider = ({ children }) => {
         const currentUser = await getCurrentUser(token);
         setUser(currentUser);
         localStorage.setItem('echat_user', JSON.stringify(currentUser));
-      } catch (err) {
-        console.error("Auth check failed:", err);
+      } catch {
         logout();
       } finally {
         setLoading(false);

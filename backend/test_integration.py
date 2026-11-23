@@ -8,11 +8,15 @@ from fastapi.testclient import TestClient
 from pymongo import MongoClient
 
 from app.core.config import settings
+from app.core.database import _is_placeholder_url, clean_mongodb_uri
 from app.main import app
 
 
 def test_authenticated_social_chat_and_realtime_flows():
-    probe = MongoClient(settings.MONGODB_URL, serverSelectionTimeoutMS=1000)
+    if _is_placeholder_url(clean_mongodb_uri(settings.MONGODB_URL)):
+        pytest.skip("MongoDB Atlas connection string is not configured")
+
+    probe = MongoClient(clean_mongodb_uri(settings.MONGODB_URL), serverSelectionTimeoutMS=1000)
     try:
         probe.admin.command("ping")
     except Exception as exc:
@@ -248,7 +252,7 @@ def test_authenticated_social_chat_and_realtime_flows():
                 "/api/v1/notifications/unread-count", headers=headers_a
             ).json()["unread_count"] == 0
     finally:
-        mongo = MongoClient(settings.MONGODB_URL, serverSelectionTimeoutMS=3000)
+        mongo = MongoClient(clean_mongodb_uri(settings.MONGODB_URL), serverSelectionTimeoutMS=3000)
         db = mongo[settings.DATABASE_NAME]
         conversation_docs = list(
             db.conversations.find({"participants": {"$in": user_ids}}, {"_id": 1})

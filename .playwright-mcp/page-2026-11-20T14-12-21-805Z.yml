@@ -1,0 +1,30 @@
+- generic [ref=e67]:
+  - complementary [ref=e68]:
+    - generic [ref=e69]:
+      - generic [ref=e74] [cursor=pointer]:
+        - heading "ECHAT" [level=1] [ref=e75]
+        - paragraph [ref=e76]: REALTIME SOCIAL
+      - navigation [ref=e77]:
+        - link "Home" [ref=e78] [cursor=pointer]:
+          - /url: /
+        - link "Search" [ref=e84] [cursor=pointer]:
+          - /url: /explore
+        - link "Clips" [ref=e90] [cursor=pointer]:
+          - /url: /clips
+        - link "Messages" [ref=e96] [cursor=pointer]:
+          - /url: /messages
+        - link "Notifications" [ref=e101] [cursor=pointer]:
+          - /url: /notifications
+        - link "Saved" [ref=e107] [cursor=pointer]:
+          - /url: /saved
+        - link "Profile" [ref=e112] [cursor=pointer]:
+          - /url: /profile/browsermanual20
+      - button "New Post" [ref=e118] [cursor=pointer]
+    - generic [ref=e123]:
+      - generic [ref=e124] [cursor=pointer]:
+        - img "Browser Manual" [ref=e127]
+        - generic [ref=e129]:
+          - paragraph [ref=e130]: Browser Manual
+          - paragraph [ref=e131]: "@browsermanual20"
+      - button "Log Out" [ref=e132] [cursor=pointer]
+  - main [ref=e136]

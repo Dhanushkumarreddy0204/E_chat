@@ -124,9 +124,6 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your MongoDB Atlas credentials
 
-# Optional: Seed initial demo users & posts to your Atlas cluster
-python -m app.seed
-
 # Start FastAPI dev server
 uvicorn app.main:app --reload --port 8000
 ```

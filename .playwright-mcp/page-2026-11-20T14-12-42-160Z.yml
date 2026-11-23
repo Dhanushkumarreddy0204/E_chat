@@ -1,0 +1,57 @@
+- generic [ref=e67]:
+  - complementary [ref=e68]:
+    - generic [ref=e69]:
+      - generic [ref=e74] [cursor=pointer]:
+        - heading "ECHAT" [level=1] [ref=e75]
+        - paragraph [ref=e76]: REALTIME SOCIAL
+      - navigation [ref=e77]:
+        - link "Home" [ref=e78] [cursor=pointer]:
+          - /url: /
+        - link "Search" [ref=e84] [cursor=pointer]:
+          - /url: /explore
+        - link "Clips" [ref=e90] [cursor=pointer]:
+          - /url: /clips
+        - link "Messages" [ref=e96] [cursor=pointer]:
+          - /url: /messages
+        - link "Notifications" [ref=e101] [cursor=pointer]:
+          - /url: /notifications
+        - link "Saved" [ref=e107] [cursor=pointer]:
+          - /url: /saved
+        - link "Profile" [ref=e112] [cursor=pointer]:
+          - /url: /profile/browsermanual20
+      - button "New Post" [active] [ref=e118] [cursor=pointer]
+    - generic [ref=e123]:
+      - generic [ref=e124] [cursor=pointer]:
+        - img "Browser Manual" [ref=e127]
+        - generic [ref=e129]:
+          - paragraph [ref=e130]: Browser Manual
+          - paragraph [ref=e131]: "@browsermanual20"
+      - button "Log Out" [ref=e132] [cursor=pointer]
+  - main [ref=e136]:
+    - generic [ref=e139]:
+      - generic [ref=e143] [cursor=pointer]:
+        - img "Browser Manual" [ref=e148]
+        - generic [ref=e151]: Your Story
+      - generic [ref=e153]:
+        - heading "Your feed is quiet" [level=3] [ref=e156]
+        - paragraph [ref=e157]: Follow some friends or creators, or create your first post to see what happens!
+        - button "Create a Post" [ref=e158] [cursor=pointer]
+  - generic [ref=e160]:
+    - generic [ref=e161]:
+      - generic [ref=e162]:
+        - img "Browser Manual" [ref=e165]
+        - generic [ref=e166]:
+          - paragraph [ref=e167]: Browser Manual
+          - paragraph [ref=e168]: Create new Post
+      - button [ref=e169] [cursor=pointer]
+    - generic [ref=e173]:
+      - button "Standard Post" [ref=e174] [cursor=pointer]
+      - button "Short Clip" [ref=e179] [cursor=pointer]
+    - generic [ref=e183]:
+      - textbox "What's happening in your world?" [ref=e184]
+      - generic [ref=e185]:
+        - textbox "Add location (e.g. Tokyo)" [ref=e187]
+        - textbox "Tags (e.g. funny, tech)" [ref=e192]
+      - generic [ref=e196]:
+        - generic [ref=e197] [cursor=pointer]: Attach Media
+        - button "Publish Post" [disabled] [ref=e203]

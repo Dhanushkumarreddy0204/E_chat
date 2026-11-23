@@ -19,11 +19,14 @@ def mask_mongodb_uri(uri: str) -> str:
     return re.sub(r":([^/@]+)@", r":****@", uri)
 
 def clean_mongodb_uri(uri: str) -> str:
-    """Strip accidental angle brackets around username/password if present."""
+    """Strip accidental angle brackets and surrounding URI template markup."""
     if not uri:
         return uri
-    cleaned = re.sub(r"://<([^>]+)>:", r"://\1:", uri)
+    cleaned = uri.strip()
+    cleaned = re.sub(r"://<([^>]+)>:", r"://\1:", cleaned)
     cleaned = re.sub(r":<([^>]+)>@", r":\1@", cleaned)
+    cleaned = re.sub(r"@<([^>]+)>", r"@\1", cleaned)
+    cleaned = cleaned.replace("<", "").replace(">", "")
     return cleaned
 
 class DatabaseManager:
@@ -73,11 +76,15 @@ async def is_mongo_connected() -> bool:
     except Exception:
         return False
 
-_PLACEHOLDER_TOKENS = ("<db_username>", "<db_password>", "<cluster-address>")
-
 def _is_placeholder_url(url: str) -> bool:
-    """Return True if the MONGODB_URL still contains template placeholder tokens."""
-    return any(token in url for token in _PLACEHOLDER_TOKENS)
+    """Return True if the MONGODB_URL still contains template or angle-bracketed values."""
+    if re.search(r"<[^<>]+>", url):
+        return True
+    return any(token in url.lower() for token in (
+        "db_username",
+        "db_password",
+        "cluster-address",
+    ))
 
 async def connect_to_mongo():
     """
