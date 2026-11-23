@@ -74,11 +74,11 @@ def test_imports_and_schemas():
     from app.core.database import _is_placeholder_url, mask_mongodb_uri, clean_mongodb_uri, get_database, connect_to_mongo
     from fastapi import HTTPException
     assert _is_placeholder_url("mongodb+srv://<db_username>:<db_password>@<cluster-address>.mongodb.net/") is True
-    assert _is_placeholder_url("mongodb+srv://real_user:real_pass@cluster0.abc12.mongodb.net/") is False
+    assert _is_placeholder_url("mongodb+srv://test_user:test_pass@cluster0.example.com/") is False
     print("[PASS] Placeholder URL detection verified!")
 
     # Test clean_mongodb_uri
-    cleaned = clean_mongodb_uri("mongodb+srv://<admin>:<pass123>@cluster0.abc12.mongodb.net/")
+    cleaned = clean_mongodb_uri("mongodb+srv://<admin>:<pass123>@cluster0.example.com/")
     assert "<" not in cleaned and ">" not in cleaned
     assert "admin:pass123@" in cleaned
     print("[PASS] clean_mongodb_uri strips accidental angle brackets!")
@@ -118,10 +118,10 @@ def test_imports_and_schemas():
 
     # Test MongoDB URI Masking & Atlas URI format handling
     from app.core.database import mask_mongodb_uri
-    sample_atlas = "mongodb+srv://admin_user:secret_pass123@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority"
+    sample_atlas = "mongodb+srv://test_admin:test_secret@cluster0.example.com/?retryWrites=true&w=majority"
     masked = mask_mongodb_uri(sample_atlas)
-    assert "secret_pass123" not in masked
-    assert "admin_user:****@" in masked
+    assert "test_secret" not in masked
+    assert "test_admin:****@" in masked
     print("[PASS] MongoDB URI credential masking verified!")
 
     # Test CORS Origins parsing
