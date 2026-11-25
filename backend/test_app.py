@@ -1,6 +1,7 @@
 import sys
 import unittest
 import asyncio
+import json
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -65,9 +66,10 @@ def test_imports_and_schemas():
     try:
         h_coro.send(None)
     except StopIteration as exc:
-        health_res = exc.value
+        health_res = json.loads(exc.value.body)
         assert "status" in health_res
         assert "database" in health_res
+        assert exc.value.status_code == 503
         print(f"[PASS] Health check endpoint verified! (status={health_res['status']}, database={health_res['database']})")
 
     # Test placeholder detection and fail-fast startup behavior

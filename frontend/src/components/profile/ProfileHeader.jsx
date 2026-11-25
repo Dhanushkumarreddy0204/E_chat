@@ -1,4 +1,5 @@
 import React from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { useNavigate } from 'react-router-dom';
 import { 
   MapPin, 
@@ -33,7 +34,7 @@ export const ProfileHeader = ({ profileUser, isFollowing, onFollowToggle, onOpen
       <div className="relative h-36 sm:h-52 md:h-56 w-full bg-brand-50 overflow-hidden">
         {profileUser.cover_url ? (
           <img 
-            src={profileUser.cover_url} 
+            src={resolveMediaUrl(profileUser.cover_url)} 
             alt="Cover" 
             className="w-full h-full object-cover"
           />

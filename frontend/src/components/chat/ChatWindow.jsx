@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { useNavigate } from 'react-router-dom';
 import {
   Send,
@@ -84,12 +85,11 @@ export const ChatWindow = ({ onBack }) => {
     setInputContent(e.target.value);
 
     // Broadcast typing event
-    const recipientIds = activeConversation.participants.map(p => p.id);
-    sendTyping(activeConversation.id, recipientIds, true);
+    sendTyping(activeConversation.id, true);
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      sendTyping(activeConversation.id, recipientIds, false);
+      sendTyping(activeConversation.id, false);
     }, 2000);
   };
 
@@ -122,8 +122,7 @@ export const ChatWindow = ({ onBack }) => {
       setMediaFile(null);
       setMediaPreview(null);
       
-      const recipientIds = activeConversation.participants.map(p => p.id);
-      sendTyping(activeConversation.id, recipientIds, false);
+      sendTyping(activeConversation.id, false);
 
       // Automatically return directly to Clips if user arrived here via ClipFlow
       if (isClipFlowTriggered) {
@@ -258,13 +257,13 @@ export const ChatWindow = ({ onBack }) => {
                   {msg.media_url && (
                     <div className="rounded-xl overflow-hidden mb-2 max-h-60">
                       {msg.message_type === 'video' ? (
-                        <video src={msg.media_url} controls className="w-full h-full object-cover" />
+                        <video src={resolveMediaUrl(msg.media_url)} controls className="w-full h-full object-cover" />
                       ) : msg.message_type === 'audio' ? (
-                        <audio src={msg.media_url} controls className="max-w-full" />
+                        <audio src={resolveMediaUrl(msg.media_url)} controls className="max-w-full" />
                       ) : msg.message_type === 'image' ? (
-                        <img src={msg.media_url} alt="Attachment" className="w-full h-full object-cover" />
+                        <img src={resolveMediaUrl(msg.media_url)} alt="Attachment" className="w-full h-full object-cover" />
                       ) : (
-                        <a href={msg.media_url} target="_blank" rel="noreferrer" className="underline">
+                        <a href={resolveMediaUrl(msg.media_url)} target="_blank" rel="noreferrer" className="underline">
                           {msg.media_name || 'Open attachment'}
                         </a>
                       )}

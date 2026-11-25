@@ -30,7 +30,10 @@ async def populate_message_details(msg_doc: dict, db: AsyncIOMotorDatabase) -> M
     
     # Check reply to
     if m_dict.get("reply_to_id") and ObjectId.is_valid(m_dict["reply_to_id"]):
-        reply_doc = await db.messages.find_one({"_id": ObjectId(m_dict["reply_to_id"])})
+        reply_doc = await db.messages.find_one({
+            "_id": ObjectId(m_dict["reply_to_id"]),
+            "conversation_id": m_dict["conversation_id"],
+        })
         if reply_doc:
             m_dict["reply_to_message"] = serialize_mongo_doc(reply_doc)
             
@@ -175,6 +178,13 @@ async def send_message(
     })
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found or not a participant")
+
+    if msg_in.reply_to_id:
+        reply_id = msg_in.reply_to_id
+        if not ObjectId.is_valid(reply_id) or not await db.messages.find_one({
+            "_id": ObjectId(reply_id), "conversation_id": msg_in.conversation_id
+        }, {"_id": 1}):
+            raise HTTPException(status_code=400, detail="Reply must reference a message in this conversation")
 
     now = datetime.utcnow()
     msg_doc = {

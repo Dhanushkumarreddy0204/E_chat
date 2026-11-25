@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { chatApi } from '../api/chat';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
@@ -7,13 +7,14 @@ const ChatContext = createContext(null);
 
 export const ChatProvider = ({ children }) => {
   const { user } = useAuth();
-  const { latestMessage, latestReaction, sendTyping } = useSocket();
+  const { latestMessage, latestReaction, latestConversation } = useSocket();
   
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const lastMessageId = useRef(null);
 
   // Load conversations
   const fetchConversations = useCallback(async () => {
@@ -32,6 +33,10 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  useEffect(() => {
+    if (latestConversation) fetchConversations();
+  }, [latestConversation, fetchConversations]);
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -61,7 +66,8 @@ export const ChatProvider = ({ children }) => {
 
   // Listen to incoming real-time messages
   useEffect(() => {
-    if (!latestMessage) return;
+    if (!latestMessage || lastMessageId.current === latestMessage.id) return;
+    lastMessageId.current = latestMessage.id;
 
     // Update conversation last message & list order
     setConversations(prev => {
@@ -91,7 +97,9 @@ export const ChatProvider = ({ children }) => {
         if (prev.some(m => m.id === latestMessage.id)) return prev;
         return [...prev, latestMessage];
       });
-      chatApi.markConversationRead(activeConversation.id);
+      chatApi.markConversationRead(activeConversation.id).catch(err => {
+        console.error('Error marking conversation read:', err.message);
+      });
     }
   }, [latestMessage, activeConversation, fetchConversations]);
 

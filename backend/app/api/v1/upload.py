@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
@@ -24,6 +25,8 @@ async def upload_file(
     fs: AsyncIOMotorGridFSBucket = Depends(get_gridfs)
 ):
     file_ext = os.path.splitext(file.filename or "")[1].lower()
+    if not re.fullmatch(r"\.[a-z0-9]{1,12}", file_ext):
+        file_ext = ""
     
     # Determine type
     media_type = "file"

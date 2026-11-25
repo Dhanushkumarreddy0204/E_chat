@@ -1,9 +1,10 @@
-from datetime import datetime, timedelta
-from bson import ObjectId
+from datetime import datetime
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 
-from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.api.deps import get_current_user, serialize_mongo_doc
@@ -27,12 +28,12 @@ async def register(user_in: UserCreate, db: AsyncIOMotorDatabase = Depends(get_d
 
     now = datetime.utcnow()
     # Default cool gradient avatar if none provided
-    default_avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={user_in.username}"
+    default_avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={quote(user_in.username, safe='')}"
     
     user_doc = {
         "username": user_in.username.lower().strip(),
         "email": user_in.email.lower().strip(),
-        "password_hash": get_password_hash(user_in.password),
+        "password_hash": await run_in_threadpool(get_password_hash, user_in.password),
         "full_name": user_in.full_name.strip(),
         "bio": "Hey there! I am using EChat.",
         "avatar_url": default_avatar,
@@ -44,7 +45,10 @@ async def register(user_in: UserCreate, db: AsyncIOMotorDatabase = Depends(get_d
         "updated_at": now
     }
 
-    result = await db.users.insert_one(user_doc)
+    try:
+        result = await db.users.insert_one(user_doc)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="Username or email is already registered") from None
     user_doc["_id"] = result.inserted_id
     
     user_dict = serialize_mongo_doc(user_doc)
@@ -66,7 +70,7 @@ async def login(login_data: UserLogin, db: AsyncIOMotorDatabase = Depends(get_da
         ]
     })
     
-    if not user or not verify_password(login_data.password, user.get("password_hash", "")):
+    if not user or not await run_in_threadpool(verify_password, login_data.password, user.get("password_hash", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username/email or password",

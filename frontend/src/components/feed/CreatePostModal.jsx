@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { X, Image, MapPin, Hash, Loader2, Sparkles, Video } from 'lucide-react';
 import { postsApi } from '../../api/posts';
 import { uploadApi } from '../../api/upload';
@@ -151,9 +152,9 @@ export const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
               {mediaPreviews.map((m, idx) => (
                 <div key={idx} className={`relative rounded-xl overflow-hidden border border-brand-200 ${postType === 'clip' ? 'h-64 flex justify-center bg-black' : 'h-36'}`}>
                   {m.type === 'video' ? (
-                    <video src={m.url} className={postType === 'clip' ? "h-full object-contain" : "w-full h-full object-cover"} controls />
+                    <video src={resolveMediaUrl(m.url)} className={postType === 'clip' ? "h-full object-contain" : "w-full h-full object-cover"} controls />
                   ) : (
-                    <img src={m.url} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={resolveMediaUrl(m.url)} alt="Preview" className="w-full h-full object-cover" />
                   )}
                   <button
                     type="button"

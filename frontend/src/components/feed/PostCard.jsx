@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { useNavigate } from 'react-router-dom';
 import { 
   Heart, 
@@ -156,13 +157,13 @@ export const PostCard = ({ post, onPostDeleted, onOpenComments }) => {
         >
           {post.media[0].media_type === 'video' ? (
             <video 
-              src={post.media[0].url} 
+              src={resolveMediaUrl(post.media[0].url)} 
               controls 
               className="w-full max-h-[460px] sm:max-h-[550px] object-contain"
             />
           ) : (
             <img 
-              src={post.media[0].url} 
+              src={resolveMediaUrl(post.media[0].url)} 
               alt="Post content" 
               className="w-full max-h-[460px] sm:max-h-[550px] object-contain"
             />

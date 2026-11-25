@@ -1,4 +1,5 @@
 import React from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { Heart, MessageCircle, Film } from 'lucide-react';
 
 export const PostGrid = ({ posts, onPostClick }) => {
@@ -24,9 +25,9 @@ export const PostGrid = ({ posts, onPostClick }) => {
           >
             {hasMedia ? (
               media.media_type === 'video' ? (
-                <video src={media.url} className="w-full h-full object-cover" />
+                <video src={resolveMediaUrl(media.url)} className="w-full h-full object-cover" />
               ) : (
-                <img src={media.url} alt="Post preview" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                <img src={resolveMediaUrl(media.url)} alt="Post preview" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
               )
             ) : (
               <div className="w-full h-full p-4 flex items-center justify-center bg-gradient-to-br from-brand-900 to-emerald-950 text-brand-100 text-xs text-center line-clamp-4 font-medium">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 import { X, ChevronLeft, ChevronRight, Heart, Send, Pause, Play, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { storiesApi } from '../../api/stories';
@@ -203,7 +204,7 @@ export const StoryViewerModal = ({ storyGroups, initialGroupIndex = 0, onClose, 
         <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
           {currentStory.media_type === 'video' ? (
             <video 
-              src={currentStory.media_url} 
+              src={resolveMediaUrl(currentStory.media_url)} 
               autoPlay 
               playsInline 
               muted 
@@ -211,7 +212,7 @@ export const StoryViewerModal = ({ storyGroups, initialGroupIndex = 0, onClose, 
             />
           ) : (
             <img 
-              src={currentStory.media_url} 
+              src={resolveMediaUrl(currentStory.media_url)} 
               alt="Story" 
               className="w-full h-full object-contain"
             />

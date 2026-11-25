@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 class UserBase(BaseModel):
     username: str
@@ -17,7 +17,19 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=30)
     email: EmailStr
     password: str = Field(..., min_length=6)
-    full_name: str
+    full_name: str = Field(..., min_length=1)
+
+    @field_validator("username", "full_name", mode="before")
+    @classmethod
+    def strip_names(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("password")
+    @classmethod
+    def check_bcrypt_length(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must use at most 72 UTF-8 bytes")
+        return value
 
 class UserLogin(BaseModel):
     email_or_username: str

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { mediaUrl as resolveMediaUrl } from '../api/urls';
 import { postsApi } from '../api/posts';
 import { Heart, MessageCircle, Share2, Music, User, Play, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react';
 import { Avatar } from '../components/common/Avatar';
@@ -279,7 +280,7 @@ const ClipItem = ({ clip, isActive, onSetActive, onOpenComments }) => {
       {mediaUrl && (
         <video
           ref={videoRef}
-          src={mediaUrl}
+          src={resolveMediaUrl(mediaUrl)}
           className="w-full h-full object-cover md:max-w-[450px]"
           loop
           playsInline

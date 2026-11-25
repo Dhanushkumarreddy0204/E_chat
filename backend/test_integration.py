@@ -173,7 +173,15 @@ def test_authenticated_social_chat_and_realtime_flows():
             assert upload.status_code == 200, upload.text
             uploaded_name = upload.json()["url"].rsplit("/", 1)[-1]
             assert upload.json()["media_type"] == "file"
-            assert client.get(f"/uploads/{uploaded_name}").content == b"audit upload"
+            media_path = upload.json()["url"]
+            assert media_path == f"/uploads/{uploaded_name}"
+            download = client.get(media_path)
+            assert download.content == b"audit upload"
+            assert download.headers["content-disposition"] == "attachment"
+            partial = client.get(media_path, headers={"Range": "bytes=6-"})
+            assert partial.status_code == 206
+            assert partial.content == b"upload"
+            assert client.get(media_path, headers={"Range": "bytes=999-"}).status_code == 416
 
             conversation = client.post(
                 "/api/v1/chat/conversations",
@@ -200,8 +208,8 @@ def test_authenticated_social_chat_and_realtime_flows():
             )
             assert group.status_code == 200 and group.json()["is_group"] is True
 
-            with client.websocket_connect(f"/ws?token={bob['access_token']}") as socket_b:
-                with client.websocket_connect(f"/ws?token={alice['access_token']}") as socket_a:
+            with client.websocket_connect("/ws", subprotocols=["echat", bob["access_token"]]) as socket_b:
+                with client.websocket_connect("/ws", subprotocols=["echat", alice["access_token"]]) as socket_a:
                     assert socket_b.receive_json()["type"] == "presence_update"
                     socket_b.send_json(
                         {

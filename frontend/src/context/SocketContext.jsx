@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { websocketUrl } from '../api/urls';
 
 const SocketContext = createContext(null);
 
@@ -10,6 +11,7 @@ export const SocketProvider = ({ children }) => {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [latestNotification, setLatestNotification] = useState(null);
   const [latestMessage, setLatestMessage] = useState(null);
+  const [latestConversation, setLatestConversation] = useState(null);
   const [latestReaction, setLatestReaction] = useState(null);
   
   const wsRef = useRef(null);
@@ -25,7 +27,6 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    const wsOrigin = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
     let stopped = false;
     let ws;
     let reconnectDelay = 500;
@@ -38,7 +39,7 @@ export const SocketProvider = ({ children }) => {
     const connect = () => {
       if (stopped) return;
 
-      ws = new WebSocket(`${wsOrigin}/ws?token=${token}`);
+      ws = new WebSocket(websocketUrl(), ['echat', token]);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -52,6 +53,7 @@ export const SocketProvider = ({ children }) => {
       };
 
       ws.onmessage = (event) => {
+        if (stopped) return;
         try {
           const payload = JSON.parse(event.data);
           const { type, data } = payload;
@@ -87,6 +89,10 @@ export const SocketProvider = ({ children }) => {
               setLatestMessage(data);
               break;
 
+            case 'new_conversation':
+              setLatestConversation(data);
+              break;
+
             case 'message_reaction':
               setLatestReaction(data);
               break;
@@ -112,6 +118,7 @@ export const SocketProvider = ({ children }) => {
       };
 
       ws.onclose = () => {
+        if (stopped) return;
         clearHeartbeat();
         if (wsRef.current === ws) wsRef.current = null;
         if (!stopped) {
@@ -137,13 +144,12 @@ export const SocketProvider = ({ children }) => {
     };
   }, [token]);
 
-  const sendTyping = useCallback((conversationId, recipientIds, isTyping) => {
+  const sendTyping = useCallback((conversationId, isTyping) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: isTyping ? 'typing_start' : 'typing_stop',
         data: {
           conversation_id: conversationId,
-          recipient_ids: recipientIds,
         }
       }));
     }
@@ -160,6 +166,7 @@ export const SocketProvider = ({ children }) => {
       typingUsers,
       sendTyping,
       latestMessage,
+      latestConversation,
       latestReaction,
       latestNotification,
       unreadNotifications,

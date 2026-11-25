@@ -1,7 +1,7 @@
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union, Optional
-from jose import jwt
+from jose import JWTError, jwt
 from app.core.config import settings
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -31,7 +31,9 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
 
 def decode_access_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"require_exp": True}
+        )
         return payload
-    except Exception:
+    except JWTError:
         return None

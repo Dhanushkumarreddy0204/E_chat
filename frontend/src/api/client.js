@@ -1,6 +1,5 @@
 import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+import { API_BASE } from './urls';
 
 const apiClient = axios.create({
   baseURL: API_BASE,
@@ -24,7 +23,8 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const sentToken = error.config?.headers?.get('Authorization');
+    if (error.response?.status === 401 && sentToken === `Bearer ${localStorage.getItem('echat_token')}`) {
       // Don't auto-redirect if checking auth or on login page
       const currentPath = window.location.pathname;
       if (!currentPath.includes('/login') && !currentPath.includes('/register')) {
@@ -32,6 +32,10 @@ apiClient.interceptors.response.use(
         localStorage.removeItem('echat_user');
         window.location.href = '/login';
       }
+    }
+    if (error.config) {
+      delete error.config.data;
+      error.config.headers?.delete('Authorization');
     }
     return Promise.reject(error);
   }

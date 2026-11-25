@@ -1,4 +1,5 @@
 import React from 'react';
+import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 
 const sizeMap = {
   xs: 'w-6 h-6 text-xs',
@@ -38,7 +39,7 @@ export const Avatar = ({
       <div className={`rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-brand-600 to-indigo-800 text-white font-semibold shadow-inner ${sizeClass}`}>
         {src ? (
           <img 
-            src={src} 
+            src={resolveMediaUrl(src)} 
             alt={alt} 
             className="w-full h-full object-cover"
             onError={(e) => { e.target.style.display = 'none'; }}
