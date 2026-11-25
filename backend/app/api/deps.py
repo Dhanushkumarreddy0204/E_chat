@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_database
 from app.core.security import decode_access_token
-from app.schemas.user import UserOut
+from app.schemas.user import AccountOut
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -23,7 +23,7 @@ def serialize_mongo_doc(doc: dict) -> dict:
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncIOMotorDatabase = Depends(get_database)
-) -> Optional[UserOut]:
+) -> Optional[AccountOut]:
     payload = decode_access_token(credentials.credentials) if credentials else None
     user_id = payload.get("sub") if payload else None
     if not ObjectId.is_valid(user_id):
@@ -42,11 +42,11 @@ async def get_current_user_optional(
     user_dict["followers_count"] = followers_count
     user_dict["following_count"] = following_count
     user_dict["posts_count"] = posts_count
-    return UserOut(**user_dict)
+    return AccountOut(**user_dict)
 
 async def get_current_user(
-    user: Optional[UserOut] = Depends(get_current_user_optional),
-) -> UserOut:
+    user: Optional[AccountOut] = Depends(get_current_user_optional),
+) -> AccountOut:
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

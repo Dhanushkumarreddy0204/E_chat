@@ -22,7 +22,8 @@ export const LoginPage = () => {
       await login(identifier, password);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid username/email or password');
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Unable to sign in. Check your details and try again.');
     } finally {
       setLoading(false);
     }

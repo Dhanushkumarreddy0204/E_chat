@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -36,17 +37,18 @@ async def populate_user_details(user_doc: dict, current_user_id: Optional[str], 
 
 @router.get("/search", response_model=List[UserOut])
 async def search_users(
-    q: str = Query(..., min_length=1),
-    limit: int = 20,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(20, ge=1, le=50),
     current_user: Optional[UserOut] = Depends(get_current_user_optional),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     current_id = current_user.id if current_user else None
+    term = re.escape(q)
     cursor = db.users.find({
         "$or": [
-            {"username": {"$regex": q, "$options": "i"}},
-            {"full_name": {"$regex": q, "$options": "i"}},
-            {"bio": {"$regex": q, "$options": "i"}}
+            {"username": {"$regex": term, "$options": "i"}},
+            {"full_name": {"$regex": term, "$options": "i"}},
+            {"bio": {"$regex": term, "$options": "i"}}
         ]
     }).limit(limit)
 

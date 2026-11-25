@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from app.core.database import get_database
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.api.deps import get_current_user, serialize_mongo_doc
-from app.schemas.user import UserCreate, UserLogin, UserOut, Token
+from app.schemas.user import AccountOut, UserCreate, UserLogin, Token
 
 router = APIRouter()
 
@@ -55,7 +55,7 @@ async def register(user_in: UserCreate, db: AsyncIOMotorDatabase = Depends(get_d
     user_dict["followers_count"] = 0
     user_dict["following_count"] = 0
     user_dict["posts_count"] = 0
-    user_out = UserOut(**user_dict)
+    user_out = AccountOut(**user_dict)
 
     token = create_access_token(subject=str(result.inserted_id))
     return Token(access_token=token, token_type="bearer", user=user_out)
@@ -85,11 +85,11 @@ async def login(login_data: UserLogin, db: AsyncIOMotorDatabase = Depends(get_da
     user_dict["followers_count"] = followers_count
     user_dict["following_count"] = following_count
     user_dict["posts_count"] = posts_count
-    user_out = UserOut(**user_dict)
+    user_out = AccountOut(**user_dict)
 
     token = create_access_token(subject=str(user["_id"]))
     return Token(access_token=token, token_type="bearer", user=user_out)
 
-@router.get("/me", response_model=UserOut)
-async def get_me(current_user: UserOut = Depends(get_current_user)):
+@router.get("/me", response_model=AccountOut)
+async def get_me(current_user: AccountOut = Depends(get_current_user)):
     return current_user

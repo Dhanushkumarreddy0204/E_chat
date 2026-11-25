@@ -89,6 +89,8 @@ async def request_validation_error(request: Request, exc: RequestValidationError
 
 @app.api_route("/uploads/{filename}", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_uploaded_media(filename: str, request: Request):
+    if "\x00" in filename or "\\" in filename:
+        raise HTTPException(status_code=404, detail="File not found")
     content_type = MEDIA_MIME_TYPES.get(Path(filename).suffix.lower(), "application/octet-stream")
     headers = {"X-Content-Type-Options": "nosniff"}
     if content_type == "application/octet-stream":

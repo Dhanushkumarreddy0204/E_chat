@@ -9,7 +9,7 @@ Built with **FastAPI**, **MongoDB Atlas (Motor & GridFS)**, **React 18**, **Tail
 ## 🌟 Key Features
 
 - ☁️ **MongoDB Atlas Cloud Database & GridFS:** Fully cloud-hosted database architecture using MongoDB Atlas with native GridFS media streaming for all user-uploaded photos, videos, and files.
-- 🔐 **Authentication & Security:** JWT-based authentication, bcrypt password hashing, session recovery, credential-masking in logs, and granular access controls.
+- 🔐 **Authentication & Security:** JWT-based authentication, bcrypt password hashing, session recovery, credential-free database logs, and granular access controls.
 - 🏠 **Dynamic Home Feed:** Multi-media posts (photos/videos), captions, hashtag filtering, double-tap like animations, comment threads, and bookmarks.
 - ⏱️ **Stories System (24-Hour Expiration):** Photo/video stories, auto-progress timers, pause on hold, story reactions, and direct replies into messaging.
 - 💬 **Real-Time WebSockets Messaging:** 
@@ -73,7 +73,6 @@ cp .env.example .env
 | `MONGODB_URL` | MongoDB Atlas SRV connection string | `mongodb+srv://<username>:<password>@<cluster-address>.mongodb.net/?retryWrites=true&w=majority` |
 | `DATABASE_NAME` | Target database name on the Atlas cluster | `EChatCluster` |
 | `SECRET_KEY` | JWT secret key for token issuance & signing | Random 64-char string |
-| `BACKEND_URL` | Public-facing backend service URL | `http://localhost:8000` |
 | `BACKEND_CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:3000,http://localhost:5173` |
 
 > [!IMPORTANT]
@@ -89,17 +88,42 @@ Run the entire stack (FastAPI Backend + React Frontend + Nginx Reverse Proxy) co
    ```bash
    cp .env.example .env
    ```
-   Edit `.env` and fill in your `<db_username>` and `<db_password>`.
+   Edit `.env` and set the MongoDB URI and a stable, random `SECRET_KEY`.
 
 2. Launch the containers:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
 3. Access the application:
    - **Frontend Application:** [http://localhost:3000](http://localhost:3000)
    - **FastAPI Backend & Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
    - **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
+
+---
+
+## Render deployment
+
+| Service | Setting | Value |
+| --- | --- | --- |
+| `echat-backend` | Runtime and branch | Docker on `main` |
+| `echat-backend` | Root Directory | `backend` |
+| `echat-backend` | Dockerfile Path and Build Context | `./Dockerfile` and `.` relative to the root directory |
+| `echat-backend` | Docker Command | Leave blank to use the Dockerfile's command and Render's `PORT` |
+| `echat-backend` | Health Check Path | `/health` |
+| `echat-backend` | `MONGODB_URL` and `DATABASE_NAME` | Existing Atlas URI and exact database name |
+| `echat-backend` | `SECRET_KEY` | Stable random secret of at least 32 characters |
+| `echat-backend` | `BACKEND_CORS_ORIGINS` | Exact frontend origin, for example `https://echat-frontend.onrender.com` |
+| Frontend Static Site | Branch and Root Directory | `main` and `frontend` |
+| Frontend Static Site | Build Command and Publish Directory | `npm ci && npm run build` and `dist` |
+| Frontend Static Site | `VITE_API_URL` | `https://echat-backend.onrender.com/api/v1` |
+| Frontend Static Site | SPA rewrite | Source `/*`, destination `/index.html`, action **Rewrite** |
+
+Set `VITE_API_URL` before building the frontend. The frontend derives `wss://echat-backend.onrender.com/ws` from it. Set `VITE_WS_URL` only when WebSockets use a different public endpoint. Use the exact frontend URL assigned by Render for CORS. Keep Atlas credentials and the JWT signing key in the backend service's environment.
+
+After reviewing and pushing the changes, deploy the backend and check that `/health` returns HTTP 200. Then deploy the frontend from the same revision. Refresh older open tabs so they pick up the updated WebSocket handshake. Changing `SECRET_KEY` signs out existing sessions.
+
+Uploads are stored in GridFS with a 100 MiB per-file limit. Upload responses contain relative paths so one database can serve different deployments.
 
 ---
 
@@ -121,7 +145,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Configure backend/.env
-cp .env.example .env
+cp ../.env.example .env
 # Edit .env with your MongoDB Atlas credentials
 
 # Start FastAPI dev server

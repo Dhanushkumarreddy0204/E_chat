@@ -1,10 +1,9 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 class UserBase(BaseModel):
     username: str
-    email: EmailStr
     full_name: str
     bio: Optional[str] = ""
     avatar_url: Optional[str] = ""
@@ -53,13 +52,15 @@ class UserOut(UserBase):
     is_online: Optional[bool] = False
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class AccountOut(UserOut):
+    email: EmailStr
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user: UserOut
+    user: AccountOut
 
 class TokenPayload(BaseModel):
     sub: Optional[str] = None

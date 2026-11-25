@@ -67,7 +67,12 @@ def test_authenticated_social_chat_and_realtime_flows():
                 "/api/v1/auth/login",
                 json={"email_or_username": f"audit_{suffix}", "password": "wrong"},
             ).status_code == 401
-            assert client.get("/api/v1/auth/me", headers=headers_a).json()["id"] == alice["user"]["id"]
+            own_profile = client.get("/api/v1/auth/me", headers=headers_a).json()
+            assert own_profile["id"] == alice["user"]["id"]
+            assert own_profile["email"] == alice["user"]["email"]
+            public_profile = client.get(f"/api/v1/users/{bob['user']['id']}")
+            assert public_profile.status_code == 200
+            assert "email" not in public_profile.json()
 
             profile = client.put(
                 "/api/v1/users/profile",
