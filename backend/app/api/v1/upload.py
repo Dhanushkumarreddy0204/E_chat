@@ -1,15 +1,14 @@
 import os
 import uuid
-import mimetypes
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
-from app.core.config import settings
 from app.core.database import get_gridfs
 from app.api.deps import get_current_user
 from app.schemas.user import UserOut
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {
     "image": [".jpg", ".jpeg", ".png", ".webp", ".gif"],
@@ -35,51 +34,35 @@ async def upload_file(
 
     # Generate unique filename
     unique_filename = f"{uuid.uuid4().hex}{file_ext}"
-    content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+    if fs is None:
+        raise HTTPException(status_code=503, detail="Media storage is unavailable")
+    if file.size == 0:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Files must be 100 MiB or smaller")
 
     file_size = 0
-    if fs is not None:
-        grid_in = fs.open_upload_stream(
+    try:
+        async with fs.open_upload_stream(
             unique_filename,
             metadata={
-                "contentType": content_type,
                 "filename": file.filename,
                 "media_type": media_type,
                 "uploader_id": str(current_user.id)
             }
-        )
-        try:
+        ) as grid_in:
             while chunk := await file.read(1024 * 1024):
-                await grid_in.write(chunk)
                 file_size += len(chunk)
-            await grid_in.close()
-        except Exception as e:
-            try:
-                grid_in.abort()
-            except Exception:
-                pass
-            raise HTTPException(status_code=500, detail=f"Failed to upload media to MongoDB: {str(e)}")
-        finally:
-            await file.close()
-    else:
-        # Fallback to local disk if DB/GridFS is unavailable (e.g. offline unit testing)
-        upload_dir = settings.UPLOAD_DIR
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, unique_filename)
-        try:
-            with open(file_path, "wb") as buffer:
-                while chunk := await file.read(1024 * 1024):
-                    buffer.write(chunk)
-                    file_size += len(chunk)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
-        finally:
-            await file.close()
-
-    url = f"{settings.BACKEND_URL}/uploads/{unique_filename}"
+                if file_size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Files must be 100 MiB or smaller")
+                await grid_in.write(chunk)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Could not store the uploaded file") from None
     
     return {
-        "url": url,
+        "url": f"/uploads/{unique_filename}",
         "filename": file.filename,
         "media_type": media_type,
         "size": file_size

@@ -94,29 +94,14 @@ async def connect_to_mongo():
     """
     global client, db, fs
 
-    raw_url = clean_mongodb_uri(settings.MONGODB_URL)
-    masked_url = mask_mongodb_uri(raw_url)
-
-    # Fail startup immediately if credentials are still unconfigured template placeholders
-    if _is_placeholder_url(raw_url):
-        err_msg = (
-            f"Cannot start application: MONGODB_URL contains placeholder tokens ({masked_url}).\n"
-            "Please configure your valid MongoDB Atlas credentials in backend/.env before starting the server."
-        )
-        logger.critical(err_msg)
-        db = None
-        client = None
-        fs = None
-        _sync_manager()
-        raise RuntimeError(err_msg)
-
-    logger.info(f"Connecting to MongoDB Atlas at {masked_url}...")
+    raw_url = settings.MONGODB_URL.strip()
+    if _is_placeholder_url(raw_url) or not raw_url.startswith(("mongodb://", "mongodb+srv://")):
+        raise RuntimeError("Set MONGODB_URL to a valid MongoDB URI without placeholder tokens.")
 
     try:
         client = AsyncIOMotorClient(
             raw_url,
             maxPoolSize=50,
-            minPoolSize=10,
             serverSelectionTimeoutMS=5000,
         )
 
@@ -127,34 +112,26 @@ async def connect_to_mongo():
         _sync_manager()
 
         logger.info(f"MongoDB connected successfully: {settings.DATABASE_NAME} (GridFS ready)")
-        print("MongoDB connected successfully")
 
         # Initialize essential indexes
         await create_db_indexes()
 
     except Exception as e:
-        logger.critical(
-            f"Failed to establish live connection to MongoDB at {masked_url}: {e}\n"
-            "Startup failed. Please check:\n"
-            "  1. Network Access (IP whitelist) in MongoDB Atlas includes your current IP or 0.0.0.0/0.\n"
-            "  2. Database user credentials (username and password) in MONGODB_URL.\n"
-            "  3. Cluster status in MongoDB Atlas dashboard."
-        )
-        if client:
+        if client is not None:
             client.close()
         client = None
         db = None
         fs = None
         _sync_manager()
         raise RuntimeError(
-            f"MongoDB Atlas is unavailable at {masked_url}. Application startup aborted: {e}"
-        ) from e
+            f"MongoDB startup failed ({type(e).__name__}). Check the URI, database credentials, and network access."
+        ) from None
 
 async def close_mongo_connection():
     """Graceful shutdown of MongoDB connections."""
     global client, db, fs
     logger.info("Closing MongoDB connection...")
-    if client:
+    if client is not None:
         client.close()
     client = None
     db = None
@@ -205,4 +182,4 @@ async def create_db_indexes():
 
         logger.info("Database indexes successfully verified and initialized.")
     except Exception as e:
-        logger.warning(f"Note on creating database indexes: {e}")
+        logger.warning("Could not initialize database indexes (%s)", type(e).__name__)
