@@ -10,6 +10,9 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 async def seed_data():
+    if not settings.DATABASE_NAME.startswith("echat_demo_"):
+        raise SystemExit("Set DATABASE_NAME to a dedicated database beginning with echat_demo_ before seeding.")
+
     masked_url = mask_mongodb_uri(settings.MONGODB_URL)
     print("Settings loaded successfully!")
     print(f"CORS origins configured: {settings.BACKEND_CORS_ORIGINS}")

@@ -44,6 +44,7 @@ const ClipFlowWatcher = () => {
   useEffect(() => {
     if (!latestMessage) return;
     if (latestMessage.id === lastHandledMessageIdRef.current) return;
+    lastHandledMessageIdRef.current = latestMessage.id;
 
     const isOnClips = location.pathname.startsWith('/clips');
     if (!isOnClips) return;
@@ -55,8 +56,6 @@ const ClipFlowWatcher = () => {
     if (!conversation) {
       conversation = { id: convId, participants: [] };
     }
-
-    lastHandledMessageIdRef.current = latestMessage.id;
 
     // Read the clips container scroll position exposed by ClipsPage
     const scrollTop = window.__clipsScrollRef?.current?.scrollTop ?? 0;

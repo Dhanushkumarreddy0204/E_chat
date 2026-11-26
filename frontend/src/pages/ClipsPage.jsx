@@ -17,9 +17,10 @@ export const ClipsPage = () => {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   const containerRef = useRef(null);
-  const restoreRequestedRef = useRef(false);
 
   const { shouldRestoreClips, consumeRestoredScrollTop } = useClipFlow();
+  // Consume the saved position on return, after the previous Clips view unmounts.
+  const restoreOnMount = useRef(shouldRestoreClips);
 
   // Expose the scroll container ref globally so ClipFlowWatcher can read scrollTop
   useEffect(() => {
@@ -31,10 +32,10 @@ export const ClipsPage = () => {
 
   // Restore scroll position when returning from a ClipFlow-triggered navigation
   useEffect(() => {
-    if (!shouldRestoreClips || restoreRequestedRef.current) return;
-    restoreRequestedRef.current = true;
+    if (!restoreOnMount.current) return;
+    restoreOnMount.current = false;
     setPendingScrollTop(consumeRestoredScrollTop());
-  }, [shouldRestoreClips, consumeRestoredScrollTop]);
+  }, [consumeRestoredScrollTop]);
 
   useLayoutEffect(() => {
     if (pendingScrollTop === null || loading || clips.length === 0 || !containerRef.current) return;

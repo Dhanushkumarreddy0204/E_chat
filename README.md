@@ -116,10 +116,10 @@ Run the entire stack (FastAPI Backend + React Frontend + Nginx Reverse Proxy) co
 | `echat-backend` | `BACKEND_CORS_ORIGINS` | Exact frontend origin, for example `https://echat-frontend.onrender.com` |
 | Frontend Static Site | Branch and Root Directory | `main` and `frontend` |
 | Frontend Static Site | Build Command and Publish Directory | `npm ci && npm run build` and `dist` |
-| Frontend Static Site | `VITE_API_URL` | `https://echat-backend.onrender.com/api/v1` |
+| Frontend Static Site | `VITE_API_URL` | `https://echat-backend-p0q1.onrender.com/api/v1` |
 | Frontend Static Site | SPA rewrite | Source `/*`, destination `/index.html`, action **Rewrite** |
 
-Set `VITE_API_URL` before building the frontend. The frontend derives `wss://echat-backend.onrender.com/ws` from it. Set `VITE_WS_URL` only when WebSockets use a different public endpoint. Use the exact frontend URL assigned by Render for CORS. Keep Atlas credentials and the JWT signing key in the backend service's environment.
+Set `VITE_API_URL` before building the frontend. The frontend derives `wss://echat-backend-p0q1.onrender.com/ws` from it. Set `VITE_WS_URL` only when WebSockets use a different public endpoint. Use the exact frontend URL assigned by Render for CORS. Keep Atlas credentials and the JWT signing key in the backend service's environment.
 
 After reviewing and pushing the changes, deploy the backend and check that `/health` returns HTTP 200. Then deploy the frontend from the same revision. Refresh older open tabs so they pick up the updated WebSocket handshake. Changing `SECRET_KEY` signs out existing sessions.
 
@@ -156,7 +156,7 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -166,7 +166,7 @@ The frontend development server runs at [http://localhost:5173](http://localhost
 
 ## 👥 Demo Accounts (Seeded via `python -m app.seed`)
 
-When you run `python -m app.seed`, the following accounts are provisioned on your MongoDB Atlas cluster (Password: `password123`):
+When you run `python -m app.seed`, use a dedicated database whose name starts with `echat_demo_`. The command replaces demo data in that database and creates the following accounts (Password: `password123`):
 
 | Username | Full Name | Role |
 | :--- | :--- | :--- |
