@@ -1,0 +1,11 @@
+import{c as l,a as u,b as x,r as s,j as e,L as y,d as g,e as h}from"./index-Db8PbI_0.js";import{p as j}from"./posts-CxBIwgHV.js";import{P as k}from"./PostCard-BYIkWbUa.js";import{C as P}from"./CommentsModal-DRppfmJd.js";import"./ModalFrame-MQ92SQfI.js";import"./map-pin-OBQNqJmF.js";import"./formatDistanceToNow-Bo0RqKEC.js";import"./en-US-D5IYu9Di.js";import"./share-2-CaHfHSjb.js";import"./chevron-left-DY6i0sHa.js";import"./heart-Bq2mG7u5.js";import"./send-DZ58z5DH.js";import"./loader-circle-CIPPhHUh.js";/**
+ * @license lucide-react v0.363.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const C=l("ArrowLeft",[["path",{d:"m12 19-7-7 7-7",key:"1l729n"}],["path",{d:"M19 12H5",key:"x3x0zl"}]]);/**
+ * @license lucide-react v0.363.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const A=l("ImageOff",[["line",{x1:"2",x2:"22",y1:"2",y2:"22",key:"a6p6uj"}],["path",{d:"M10.41 10.41a2 2 0 1 1-2.83-2.83",key:"1bzlo9"}],["line",{x1:"13.5",x2:"6",y1:"13.5",y2:"21",key:"1q0aeu"}],["line",{x1:"18",x2:"21",y1:"12",y2:"15",key:"5mozeu"}],["path",{d:"M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59",key:"mmje98"}],["path",{d:"M21 15V5a2 2 0 0 0-2-2H9",key:"43el77"}]]);function _(){const{id:n}=u(),r=x(),[a,o]=s.useState(null),[p,i]=s.useState(!1),[d,m]=s.useState(!1);s.useEffect(()=>{let t=!0;return o(null),i(!1),j.getPostById(n).then(f=>{t&&o(f)}).catch(()=>{t&&i(!0)}),()=>{t=!1}},[n]);function c(){o(t=>t&&{...t,comments_count:(t.comments_count||0)+1})}return e.jsxs("div",{className:"page-stack feed-page",children:[e.jsxs("div",{className:"flex items-center gap-3",children:[e.jsx(y,{to:"/","aria-label":"Back to feed",className:"icon-button",children:e.jsx(C,{size:20})}),e.jsx("h1",{className:"page-title !text-[38px]",children:"Post"})]}),p?e.jsx(g,{icon:A,title:"Post unavailable",action:"Back to feed",onAction:()=>r("/")}):a?e.jsx(k,{post:a,onOpenComments:()=>m(!0),onPostDeleted:()=>r("/"),onCommentAdded:c}):e.jsx(h,{label:"Loading post",media:!0}),d&&a&&e.jsx(P,{isOpen:!0,post:a,onClose:()=>m(!1),onCommentAdded:c})]})}export{_ as PostPage};

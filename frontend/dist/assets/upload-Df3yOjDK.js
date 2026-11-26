@@ -1,0 +1,1 @@
+import{f as e}from"./index-Db8PbI_0.js";const n={uploadFile:async t=>{const a=new FormData;return a.append("file",t),(await e.post("/upload/file",a,{headers:{"Content-Type":"multipart/form-data"}})).data}};export{n as u};
