@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.schemas.user import UserOut
 
 class StoryCreate(BaseModel):
@@ -28,8 +28,7 @@ class StoryOut(BaseModel):
     is_viewed: bool = False
     reactions_count: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserStoryGroup(BaseModel):
     user: UserOut

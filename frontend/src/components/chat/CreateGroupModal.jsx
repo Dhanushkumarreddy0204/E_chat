@@ -1,140 +1,94 @@
-import React, { useState, useEffect } from 'react';
-import { X, Users, Check, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, LoaderCircle, Search, X } from 'lucide-react';
 import { usersApi } from '../../api/users';
 import { chatApi } from '../../api/chat';
+import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../common/Avatar';
+import { ModalFrame } from '../common/ModalFrame';
+import { PageSkeleton } from '../common/PageState';
 
-export const CreateGroupModal = ({ isOpen, onClose }) => {
+export function CreateGroupModal({ onClose }) {
+  const { user } = useAuth();
   const { fetchConversations, setActiveConversation } = useChat();
   const [groupName, setGroupName] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [query, setQuery] = useState('');
+  const [members, setMembers] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!isOpen) return;
-    const loadUsers = async () => {
-      try {
-        setLoading(true);
-        const data = await usersApi.getSuggestions(15);
-        setSuggestions(data);
-      } catch (err) {
-        console.error('Error fetching users:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadUsers();
-  }, [isOpen]);
+    setError('');
+    setMembers(null);
+    let active = true;
+    const term = query.trim();
+    const timer = setTimeout(() => {
+      (term ? usersApi.searchUsers(term) : usersApi.getSuggestions(20))
+        .then(data => { if (active) setMembers(data.filter(person => person.id !== user.id)); })
+        .catch(() => { if (active) { setMembers([]); setError('Could not load people.'); } });
+    }, term ? 220 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [query, user.id]);
 
-  if (!isOpen) return null;
-
-  const toggleUserSelect = (uid) => {
-    setSelectedUserIds(prev => 
-      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
-    );
-  };
-
-  const handleCreateGroup = async (e) => {
-    e.preventDefault();
-    if (!groupName.trim() || selectedUserIds.length === 0) return;
-
+  async function submit(event) {
+    event.preventDefault();
+    if (!groupName.trim() || !selected.length) return;
+    setBusy(true);
+    setError('');
     try {
-      setSubmitting(true);
-      const conv = await chatApi.createOrGetConversation(
-        selectedUserIds, 
-        true, 
-        groupName.trim(), 
-        'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=400&q=80'
-      );
+      const conversation = await chatApi.createOrGetConversation(selected.map(person => person.id), true, groupName.trim());
       await fetchConversations();
-      setActiveConversation(conv);
+      setActiveConversation(conversation);
       onClose();
-    } catch (err) {
-      console.error('Error creating group:', err);
-      alert('Failed to create group');
+    } catch {
+      setError('Could not create the group.');
     } finally {
-      setSubmitting(false);
+      setBusy(false);
     }
-  };
+  }
+
+  function toggle(person) {
+    setSelected(previous => previous.some(entry => entry.id === person.id) ? previous.filter(entry => entry.id !== person.id) : [...previous, person]);
+  }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl border border-brand-100 p-4 sm:p-6 space-y-4 sm:space-y-5">
-        <div className="flex items-center justify-between border-b border-brand-200 pb-3">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-brand-500" />
-            <h3 className="text-base font-bold text-brand-900">Create New Group</h3>
+    <ModalFrame label="Create group chat" onClose={busy ? () => {} : onClose}>
+      <div className="modal-panel space-y-4 overflow-y-auto p-5 sm:p-6">
+        <header className="flex items-center justify-between border-b border-border pb-3">
+          <h2 className="section-title">New group chat</h2>
+          <button type="button" aria-label="Close" className="icon-button" onClick={onClose} disabled={busy}><X size={20} /></button>
+        </header>
+        <form onSubmit={submit} className="grid gap-3">
+          <label className="auth-label">Group name<input required className="field" value={groupName} onChange={event => setGroupName(event.target.value)} disabled={busy} /></label>
+          <label className="relative block">
+            <span className="sr-only">Find members</span>
+            <Search size={17} className="absolute left-3 top-3 text-text-secondary" />
+            <input className="field !pl-10" placeholder="Find members" value={query} onChange={event => setQuery(event.target.value)} disabled={busy} />
+          </label>
+          {selected.length > 0 && <div className="flex flex-wrap gap-1.5" aria-label="Selected members">
+            {selected.map(person => <button type="button" key={person.id} aria-label={`Remove ${person.full_name}`}
+              onClick={() => toggle(person)} disabled={busy} className="pill-button secondary-button !min-h-8 !text-xs">{person.full_name}<X size={13} /></button>)}
+          </div>}
+          <div className="max-h-48 space-y-1 overflow-y-auto">
+            {!members ? <PageSkeleton label="Loading people" /> : !members.length ? <p className="p-3 text-sm text-text-secondary">No matching people.</p> :
+              members.map(person => {
+                const checked = selected.some(entry => entry.id === person.id);
+                return <button type="button" key={person.id} aria-pressed={checked} onClick={() => toggle(person)} disabled={busy}
+                  className={`chat-row ${checked ? 'chat-row-selected' : ''}`}>
+                  <Avatar src={person.avatar_url} alt={person.full_name} size="sm" />
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{person.full_name}</span>
+                    <span className="block truncate text-xs text-text-secondary">@{person.username}</span></span>
+                  {checked && <Check size={17} className="text-brand-400" />}
+                </button>;
+              })}
           </div>
-          <button 
-            onClick={onClose}
-            className="p-1.5 rounded-full text-brand-700 hover:text-brand-800 hover:bg-brand-50"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleCreateGroup} className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Group Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Frontend Dream Team 🚀"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              className="mt-1 w-full bg-white border border-brand-200 rounded-xl py-2.5 px-4 text-xs sm:text-sm text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Select Members ({selectedUserIds.length})</label>
-            <div className="mt-2 max-h-56 overflow-y-auto space-y-2 border border-brand-200 rounded-xl p-2 bg-brand-50/40">
-              {loading ? (
-                <div className="text-center py-4 text-xs text-brand-600">Loading users...</div>
-              ) : suggestions.length === 0 ? (
-                <div className="text-center py-4 text-xs text-brand-600">No users found.</div>
-              ) : (
-                suggestions.map((u) => {
-                  const isSelected = selectedUserIds.includes(u.id);
-                  return (
-                    <div
-                      key={u.id}
-                      onClick={() => toggleUserSelect(u.id)}
-                      className={`p-2 rounded-xl flex items-center justify-between cursor-pointer transition-colors ${
-                        isSelected ? 'bg-brand-600/20 border border-brand-500/40' : 'hover:bg-brand-50/60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Avatar src={u.avatar_url} alt={u.full_name} size="sm" />
-                        <div>
-                          <p className="text-xs font-bold text-brand-900">{u.full_name}</p>
-                          <p className="text-[10px] text-brand-600">@{u.username}</p>
-                        </div>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center border ${
-                        isSelected ? 'bg-brand-600 border-brand-500 text-white' : 'border-brand-200'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting || !groupName.trim() || selectedUserIds.length === 0}
-            className="w-full py-3 rounded-xl bg-brand-500 text-white font-bold text-xs flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 transition-all"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-            <span>Create Group</span>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" className="pill-button primary-button disabled:opacity-50" disabled={busy || !groupName.trim() || !selected.length}>
+            {busy && <LoaderCircle size={16} className="animate-spin" />} Create group
           </button>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
-};
+}

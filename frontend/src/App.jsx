@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider, useSocket } from './context/SocketContext';
@@ -9,8 +9,10 @@ import { Sidebar } from './components/common/Sidebar';
 import { RightPanel } from './components/common/RightPanel';
 import { Navbar } from './components/common/Navbar';
 import { BottomNav } from './components/common/BottomNav';
-import { CreatePostModal } from './components/feed/CreatePostModal';
+import { PageSkeleton } from './components/common/PageState';
+const CreatePostModal = lazy(() => import('./components/feed/CreatePostModal').then(module => ({ default: module.CreatePostModal })));
 
+const PostPage = lazy(() => import('./pages/PostPage').then((page) => ({ default: page.PostPage })));
 const HomePage = lazy(() => import('./pages/HomePage').then((page) => ({ default: page.HomePage })));
 const ExplorePage = lazy(() => import('./pages/ExplorePage').then((page) => ({ default: page.ExplorePage })));
 const ClipsPage = lazy(() => import('./pages/ClipsPage').then((page) => ({ default: page.ClipsPage })));
@@ -84,18 +86,17 @@ const ClipFlowWatcher = () => {
 const ProtectedLayout = () => {
   const { user, loading } = useAuth();
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const [postRevision, setPostRevision] = useState(0);
+  const navigate = useNavigate();
   const location = useLocation();
 
+  const showRail = location.pathname === '/' || location.pathname === '/explore';
   const isFullScreenRoute =
     location.pathname.startsWith('/messages') || location.pathname.startsWith('/clips');
 
-  if (loading) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background">
-        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  useLayoutEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+
+  if (loading) return <div className="page-stack mx-auto w-full max-w-xl px-4"><PageSkeleton label="Loading EChat" media /></div>;
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -105,27 +106,22 @@ const ProtectedLayout = () => {
     <SocketProvider>
       <ChatProvider>
         <ClipFlowProvider>
-          <div className="min-h-[100dvh] md:h-screen bg-background text-text flex flex-col md:flex-row md:overflow-hidden">
-            {/* Left Navigation Sidebar */}
+          <div className="app-shell">
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-surface focus:p-3">Skip to content</a>
             <Sidebar onOpenCreatePost={() => setIsCreatePostOpen(true)} />
-
-            {/* Mobile Top Navbar */}
-            <Navbar onOpenCreatePost={() => setIsCreatePostOpen(true)} />
-
-            {/* Center Main Scrollable Content */}
-            <main
-              className={`flex-1 min-w-0 h-full overflow-y-auto ${
-                isFullScreenRoute ? '' : 'pb-20 md:pb-6'
-              }`}
-            >
-              <Suspense fallback={<div className="w-full h-full min-h-[50vh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>}>
+            <div className="app-body min-w-0">
+              <Navbar onOpenCreatePost={() => setIsCreatePostOpen(true)} />
+              <div className="app-content" data-rail={showRail} data-immersive={isFullScreenRoute}>
+                <main id="main-content" tabIndex={-1} className="app-main" data-immersive={isFullScreenRoute}>
+                  <Suspense fallback={<div className="page-stack"><PageSkeleton label="Loading page" media /></div>}>
                 <Routes>
                   <Route
                     path="/"
-                    element={<HomePage onOpenCreatePost={() => setIsCreatePostOpen(true)} />}
+                    element={<HomePage onOpenCreatePost={() => setIsCreatePostOpen(true)} postRevision={postRevision} />}
                   />
                   <Route path="/explore" element={<ExplorePage />} />
-                  <Route path="/clips" element={<ClipsPage />} />
+                  <Route path="/clips" element={<ClipsPage key={postRevision} />} />
+                  <Route path="/post/:id" element={<PostPage />} />
                   <Route path="/messages" element={<ChatPage />} />
                   <Route path="/notifications" element={<NotificationsPage />} />
                   <Route path="/saved" element={<SavedPage />} />
@@ -133,24 +129,22 @@ const ProtectedLayout = () => {
                   <Route path="/profile/:username" element={<ProfilePage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
-              </Suspense>
-            </main>
-
-            {/* Right Suggested Panel */}
-            <RightPanel />
-
-            {/* Mobile Bottom Navigation */}
+                  </Suspense>
+                </main>
+                {showRail && <RightPanel />}
+              </div>
+            </div>
             <BottomNav />
 
             {/* Global Create Post Modal */}
-            <CreatePostModal
-              isOpen={isCreatePostOpen}
+            {isCreatePostOpen && <Suspense fallback={null}><CreatePostModal
+              isOpen
               onClose={() => setIsCreatePostOpen(false)}
-              onPostCreated={() => {
-                setIsCreatePostOpen(false);
-                window.location.reload();
+              onPostCreated={type => {
+                setPostRevision(previous => previous + 1);
+                navigate(type === 'clip' ? '/clips' : '/');
               }}
-            />
+            /></Suspense>}
 
             {/* ClipFlow: watches incoming messages, auto-navigates from Clips to Chat */}
             <ClipFlowWatcher />

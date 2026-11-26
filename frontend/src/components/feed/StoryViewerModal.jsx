@@ -1,288 +1,161 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { mediaUrl as resolveMediaUrl } from '../../api/urls';
-import { X, ChevronLeft, ChevronRight, Heart, Send, Pause, Play, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Send, Trash2, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { mediaUrl } from '../../api/urls';
 import { storiesApi } from '../../api/stories';
 import { chatApi } from '../../api/chat';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
+import { ModalFrame } from '../common/ModalFrame';
 
-export const StoryViewerModal = ({ storyGroups, initialGroupIndex = 0, onClose, onStoryDeleted }) => {
-  const { user: currentUser } = useAuth();
+export function StoryViewerModal({ storyGroups, initialGroupIndex = 0, onClose, onStoryDeleted }) {
+  const { user } = useAuth();
   const [groupIndex, setGroupIndex] = useState(initialGroupIndex);
   const [storyIndex, setStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [reactedEmoji, setReactedEmoji] = useState(null);
+  const [paused, setPaused] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [reply, setReply] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const video = useRef(null);
 
-  const currentGroup = storyGroups[groupIndex];
-  const currentStory = currentGroup?.stories[storyIndex];
+  const group = storyGroups[groupIndex];
+  const story = group?.stories[storyIndex];
+  const isOwner = user?.id === group?.user.id;
+  const canGoBack = storyIndex > 0 || groupIndex > 0;
 
-  const timerRef = useRef(null);
-
-  // Mark story as viewed on open
-  useEffect(() => {
-    if (currentStory && currentUser) {
-      storiesApi.markStoryViewed(currentStory.id).catch(console.error);
-    }
+  const next = useCallback(() => {
     setProgress(0);
-  }, [groupIndex, storyIndex, currentStory, currentUser]);
-
-  // Story progress timer
-  useEffect(() => {
-    if (!currentStory || isPaused) return;
-
-    const duration = (currentStory.duration_seconds || 5) * 1000;
-    const intervalMs = 50;
-    const increment = (intervalMs / duration) * 100;
-
-    timerRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          handleNextStory();
-          return 0;
-        }
-        return prev + increment;
-      });
-    }, intervalMs);
-
-    return () => clearInterval(timerRef.current);
-  }, [groupIndex, storyIndex, currentStory, isPaused]);
-
-  const handleNextStory = () => {
-    if (storyIndex < currentGroup.stories.length - 1) {
-      setStoryIndex(prev => prev + 1);
-      setProgress(0);
-    } else if (groupIndex < storyGroups.length - 1) {
-      setGroupIndex(prev => prev + 1);
+    setReply('');
+    setNotice('');
+    if (storyIndex + 1 < group.stories.length) setStoryIndex(storyIndex + 1);
+    else if (groupIndex + 1 < storyGroups.length) {
       setStoryIndex(0);
-      setProgress(0);
-    } else {
-      onClose();
-    }
-  };
+      setGroupIndex(groupIndex + 1);
+    } else onClose();
+  }, [storyIndex, group, groupIndex, storyGroups.length, onClose]);
 
-  const handlePrevStory = () => {
-    if (storyIndex > 0) {
-      setStoryIndex(prev => prev - 1);
-      setProgress(0);
-    } else if (groupIndex > 0) {
-      setGroupIndex(prev => prev - 1);
-      const prevGroup = storyGroups[groupIndex - 1];
-      setStoryIndex(prevGroup.stories.length - 1);
-      setProgress(0);
+  function previous() {
+    if (!canGoBack) return;
+    setProgress(0);
+    setReply('');
+    setNotice('');
+    if (storyIndex > 0) setStoryIndex(storyIndex - 1);
+    else {
+      setGroupIndex(groupIndex - 1);
+      setStoryIndex(storyGroups[groupIndex - 1].stories.length - 1);
     }
-  };
+  }
 
-  const handleEmojiReaction = async (emoji) => {
-    if (!currentStory) return;
+  useEffect(() => {
+    if (story?.id) storiesApi.markStoryViewed(story.id).catch(() => {});
+  }, [story?.id]);
+
+  useEffect(() => {
+    if (!story || paused || busy || deleting) return;
+    const increment = 100 / (Math.max(1, story.duration_seconds || 5) * 1000);
+    const timer = setInterval(() => setProgress(value => Math.min(value + increment, 1)), 100);
+    return () => clearInterval(timer);
+  }, [story, paused, busy, deleting]);
+
+  useEffect(() => {
+    if (progress >= 1) next();
+  }, [progress, next]);
+
+  useEffect(() => {
+    if (!video.current) return;
+    if (paused || busy || deleting) video.current.pause();
+    else video.current.play().catch(() => {});
+  }, [story, paused, busy, deleting]);
+
+  async function interact(action, success) {
+    setBusy(true);
+    setNotice('');
     try {
-      setReactedEmoji(emoji);
-      await storiesApi.reactToStory(currentStory.id, emoji);
-      setTimeout(() => setReactedEmoji(null), 1500);
-    } catch (err) {
-      console.error('Error reacting to story:', err);
+      await action();
+      setNotice(success);
+      return true;
+    } catch {
+      setNotice('Could not complete this action. Try again.');
+      return false;
+    } finally {
+      setBusy(false);
     }
-  };
+  }
 
-  const handleSendReply = async (e) => {
-    e.preventDefault();
-    if (!replyText.trim() || !currentStory || !currentGroup) return;
-
-    try {
-      // Create conversation and send reply
-      const conv = await chatApi.createOrGetConversation([currentGroup.user.id], false);
-      await chatApi.sendMessage({
-        conversation_id: conv.id,
-        content: `Replied to your story: "${replyText.trim()}"`,
-        message_type: 'text',
-        media_url: currentStory.media_url,
-      });
-      setReplyText('');
-      setReactedEmoji('🚀 Sent!');
-      setTimeout(() => setReactedEmoji(null), 1500);
-    } catch (err) {
-      console.error('Error sending story reply:', err);
-    }
-  };
-
-  const handleDeleteStory = async () => {
-    if (!currentStory) return;
-    if (!window.confirm('Delete this story?')) return;
-    try {
-      await storiesApi.deleteStory(currentStory.id);
-      if (onStoryDeleted) onStoryDeleted();
-      handleNextStory();
-    } catch (err) {
-      console.error('Error deleting story:', err);
-    }
-  };
-
-  if (!currentGroup || !currentStory) return null;
-
-  const isOwner = currentUser && currentUser.id === currentGroup.user.id;
-  const timeAgo = formatDistanceToNow(new Date(currentStory.created_at), { addSuffix: true });
-
+  if (!story) return null;
+  const hasMedia = Boolean(story.media_url);
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 sm:bg-black/95 backdrop-blur-md flex items-center justify-center select-none p-2 sm:p-4">
-      {/* Close Button */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 sm:top-5 right-4 sm:right-5 z-50 p-2 sm:p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-      >
-        <X className="w-6 h-6" />
-      </button>
-
-      {/* Prev Navigation Button */}
-      <button
-        onClick={handlePrevStory}
-        className="hidden md:flex absolute left-8 z-40 p-3 rounded-full bg-black/60 text-white hover:bg-black/80 hover:scale-110 transition-all"
-      >
-        <ChevronLeft className="w-6 h-6" />
-      </button>
-
-      {/* Story Card Container */}
-      <div 
-        className="relative w-full max-w-sm sm:max-w-md h-[88vh] sm:h-[90vh] max-h-[780px] rounded-2xl overflow-hidden flex flex-col justify-between shadow-2xl"
-        style={{ backgroundColor: currentStory.background_color || '#000000' }}
-        onMouseDown={() => setIsPaused(true)}
-        onMouseUp={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
-      >
-        {/* Progress Bars Header */}
-        <div className="absolute top-0 left-0 right-0 z-30 p-3 space-y-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
-          <div className="flex gap-1">
-            {currentGroup.stories.map((s, idx) => {
-              let fill = 0;
-              if (idx < storyIndex) fill = 100;
-              else if (idx === storyIndex) fill = progress;
-
-              return (
-                <div key={s.id || idx} className="h-1 flex-1 bg-white/30 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-white transition-all duration-75 ease-linear rounded-full"
-                    style={{ width: `${fill}%` }}
-                  />
-                </div>
-              );
-            })}
+    <ModalFrame label="Story viewer" onClose={onClose} immersive>
+      <div className="story-stage" onKeyDown={event => {
+        if (event.target instanceof HTMLInputElement) return;
+        if (event.key === 'ArrowLeft') previous();
+        if (event.key === 'ArrowRight') next();
+      }} style={{ background: story.background_color || '#22392d' }}>
+        <div className="story-shade" aria-hidden="true" />
+        {hasMedia && (story.media_type === 'video' ? <video key={story.id} ref={video} src={mediaUrl(story.media_url)}
+          muted playsInline preload="metadata" className="absolute inset-0 h-full w-full object-contain" /> :
+          <img src={mediaUrl(story.media_url)} alt={story.caption || 'Story photo'} className="absolute inset-0 h-full w-full object-contain" />)}
+        <header className="absolute inset-x-0 top-0 z-[2] p-3 sm:p-4">
+          <div className="mb-3 flex gap-1" role="progressbar" aria-label="Story progress" aria-valuenow={Math.round(progress * 100)}>
+            {group.stories.map((item, index) => <span key={item.id} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/40">
+              <span className="block h-full origin-left rounded-full bg-white" style={{ transform: `scaleX(${index < storyIndex ? 1 : index === storyIndex ? progress : 0})` }} />
+            </span>)}
           </div>
-
-          {/* Author Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <Avatar src={currentGroup.user.avatar_url} alt={currentGroup.user.full_name} size="sm" />
-              <div>
-                <p className="text-xs font-bold text-white leading-tight">{currentGroup.user.username}</p>
-                <p className="text-[10px] text-white/70">{timeAgo}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {isOwner && (
-                <button 
-                  onClick={handleDeleteStory}
-                  className="p-1.5 rounded-full bg-brand-500/20 text-brand-300 hover:bg-brand-500/40"
-                  title="Delete Story"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-              <button 
-                onClick={() => setIsPaused(!isPaused)} 
-                className="p-1.5 text-white/80 hover:text-white"
-              >
-                {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-              </button>
-            </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <Avatar src={group.user.avatar_url} alt={group.user.full_name} size="sm" className="shrink-0" />
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{group.user.full_name}</p>
+              <p className="text-xs text-white/80">{formatDistanceToNow(new Date(story.created_at), { addSuffix: true })}</p></div>
+            {isOwner && <button type="button" className="story-icon" aria-label="Delete story" onClick={() => { setPaused(true); setDeleting(true); }}><Trash2 size={17} /></button>}
+            <button type="button" className="story-icon" aria-label={paused ? 'Resume story' : 'Pause story'}
+              onClick={() => setPaused(!paused)}>{paused ? <Play size={17} /> : <Pause size={17} />}</button>
+            <button type="button" className="story-icon" aria-label="Close" onClick={onClose}><X size={20} /></button>
           </div>
+        </header>
+        {!hasMedia && <p className="absolute inset-0 grid place-items-center break-words px-12 text-center font-display text-3xl tracking-tight">{story.caption}</p>}
+        <div className="pointer-events-none absolute inset-x-2 top-1/2 z-[1] flex -translate-y-1/2 justify-between">
+          <button type="button" className="story-icon pointer-events-auto disabled:invisible" aria-label="Previous story" disabled={!canGoBack} onClick={previous}><ChevronLeft size={22} /></button>
+          <button type="button" className="story-icon pointer-events-auto" aria-label="Next story" onClick={next}><ChevronRight size={22} /></button>
         </div>
-
-        {/* Media Content */}
-        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-          {currentStory.media_type === 'video' ? (
-            <video 
-              src={resolveMediaUrl(currentStory.media_url)} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <img 
-              src={resolveMediaUrl(currentStory.media_url)} 
-              alt="Story" 
-              className="w-full h-full object-contain"
-            />
-          )}
-
-          {/* Floating Reaction Animation Overlay */}
-          {reactedEmoji && (
-            <div className="absolute inset-0 flex items-center justify-center z-40 animate-bounce">
-              <span className="text-6xl filter drop-shadow-lg">{reactedEmoji}</span>
+        <footer className="absolute inset-x-0 bottom-0 z-[2] space-y-2 p-3 sm:p-4">
+          {hasMedia && story.caption && <p className="break-words text-center text-sm leading-relaxed">{story.caption}</p>}
+          {!isOwner && <>
+            <div className="flex justify-center gap-1.5">
+              {['❤️', '👍', '😂', '🙌'].map(emoji => <button key={emoji} type="button" aria-label={`React ${emoji}`} className="story-icon"
+                disabled={busy} onClick={() => { setPaused(true); interact(() => storiesApi.reactToStory(story.id, emoji), 'Reaction sent.'); }}>{emoji}</button>)}
             </div>
-          )}
-
-          {/* Caption text */}
-          {currentStory.caption && (
-            <div className="absolute bottom-24 left-4 right-4 z-20 text-center">
-              <span className="inline-block px-4 py-2 rounded-xl bg-black/60 text-white text-xs sm:text-sm font-medium backdrop-blur-xs">
-                {currentStory.caption}
-              </span>
-            </div>
-          )}
-
-          {/* Invisible tap targets for navigation on mobile */}
-          <div className="absolute top-16 bottom-20 left-0 w-1/3 z-10" onClick={handlePrevStory} />
-          <div className="absolute top-16 bottom-20 right-0 w-1/3 z-10" onClick={handleNextStory} />
-        </div>
-
-        {/* Footer Actions: Emoji reactions & Reply box */}
-        {!isOwner && (
-          <div className="relative z-30 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent space-y-2">
-            {/* Quick Emoji Bar */}
-            <div className="flex justify-around py-1">
-              {['❤️', '🔥', '😂', '👏', '😍', '🚀'].map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => handleEmojiReaction(emoji)}
-                  className="text-xl hover:scale-125 active:scale-95 transition-transform"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
-            {/* Reply Input Form */}
-            <form onSubmit={handleSendReply} className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder={`Reply to ${currentGroup.user.username}...`}
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                className="flex-1 bg-white/20 border border-white/30 rounded-full py-2 px-4 text-xs text-white placeholder-white/70 focus:outline-none focus:border-brand-400"
-              />
-              <button
-                type="submit"
-                disabled={!replyText.trim()}
-                className="p-2 rounded-full bg-brand-500 text-white disabled:opacity-40 hover:bg-brand-600 transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
+            <form className="flex gap-2" onSubmit={async event => {
+              event.preventDefault();
+              if (!reply.trim()) return;
+              if (await interact(async () => {
+                const conversation = await chatApi.createOrGetConversation([group.user.id], false);
+                await chatApi.sendMessage({ conversation_id: conversation.id, content: `Replied to your story: "${reply.trim()}"`, message_type: 'text', media_url: story.media_url || null });
+              }, 'Reply sent.')) setReply('');
+            }}>
+              <input className="min-w-0 flex-1 rounded-xl border border-white/40 bg-black/30 px-3 text-sm text-white placeholder:text-white/80"
+                aria-label="Reply to story" placeholder="Reply to story…" value={reply} onFocus={() => setPaused(true)} onChange={event => setReply(event.target.value)} />
+              <button type="submit" aria-label="Send reply" disabled={busy || !reply.trim()} className="story-icon disabled:opacity-50"><Send size={17} /></button>
             </form>
+          </>}
+          {notice && <p className="text-center text-xs text-white" role="status">{notice}</p>}
+        </footer>
+        {deleting && <div className="absolute inset-0 z-[3] grid place-items-center bg-black/55 p-3">
+          <div className="panel w-full max-w-xs space-y-4 p-4 text-text">
+            <h2 className="section-title">Delete this story?</h2>
+            {notice && <p role="alert" className="text-xs text-text-secondary">{notice}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="pill-button secondary-button" disabled={busy} onClick={() => setDeleting(false)}>Cancel</button>
+              <button type="button" className="pill-button danger-button" disabled={busy} onClick={async () => {
+                if (await interact(() => storiesApi.deleteStory(story.id), 'Story deleted.')) {
+                  onStoryDeleted?.();
+                  onClose();
+                }
+              }}>Delete</button>
+            </div>
           </div>
-        )}
+        </div>}
       </div>
-
-      {/* Next Navigation Button */}
-      <button
-        onClick={handleNextStory}
-        className="hidden md:flex absolute right-8 z-40 p-3 rounded-full bg-black/60 text-white hover:bg-black/80 hover:scale-110 transition-all"
-      >
-        <ChevronRight className="w-6 h-6" />
-      </button>
-    </div>
+    </ModalFrame>
   );
-};
+}

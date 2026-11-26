@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import { mediaUrl as resolveMediaUrl } from '../../api/urls';
 
 const sizeMap = {
@@ -32,17 +32,18 @@ export const Avatar = ({
   const sizeClass = sizeMap[size] || sizeMap.md;
   const dotClass = dotSizeMap[size] || dotSizeMap.md;
 
+  const [failedSrc, setFailedSrc] = useState(null);
   const fallbackLetter = alt ? alt.charAt(0).toUpperCase() : 'U';
 
   const avatarElement = (
     <div className={`relative inline-block ${className}`}>
-      <div className={`rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-brand-600 to-indigo-800 text-white font-semibold shadow-inner ${sizeClass}`}>
-        {src ? (
+      <div className={`rounded-full overflow-hidden flex items-center justify-center bg-brand-100 text-brand-900 font-semibold ${sizeClass}`}>
+        {src && failedSrc !== src ? (
           <img 
-            src={resolveMediaUrl(src)} 
+            src={resolveMediaUrl(src)}
             alt={alt} 
             className="w-full h-full object-cover"
-            onError={(e) => { e.target.style.display = 'none'; }}
+            loading="lazy" decoding="async" onError={() => setFailedSrc(src)}
           />
         ) : (
           <span>{fallbackLetter}</span>
@@ -50,7 +51,7 @@ export const Avatar = ({
       </div>
 
       {showOnlineStatus && isOnline && (
-        <span className={`absolute bottom-0 right-0 rounded-full bg-emerald-500 ring-2 ring-white ${dotClass}`} />
+        <span className={`absolute bottom-0 right-0 rounded-full bg-emerald-500 ring-2 ring-surface ${dotClass}`} />
       )}
     </div>
   );

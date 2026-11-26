@@ -1,8 +1,10 @@
-import re
 import logging
+import re
+from asyncio import CancelledError, sleep
 from typing import Optional
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorGridFSBucket
+from pymongo.errors import ConfigurationError, ConnectionFailure, OperationFailure
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -105,8 +107,13 @@ async def connect_to_mongo():
             serverSelectionTimeoutMS=5000,
         )
 
-        # Validate live connectivity via ping before proceeding
-        await client.admin.command("ping")
+        try:
+            await client.admin.command("ping")
+        except ConnectionFailure:
+            logger.warning("MongoDB did not respond during startup. Retrying once.")
+            await sleep(1)
+            await client.admin.command("ping")
+
         db = client[settings.DATABASE_NAME]
         fs = AsyncIOMotorGridFSBucket(db)
         _sync_manager()
@@ -116,16 +123,19 @@ async def connect_to_mongo():
         # Initialize essential indexes
         await create_db_indexes()
 
-    except Exception as e:
-        if client is not None:
-            client.close()
-        client = None
-        db = None
-        fs = None
-        _sync_manager()
-        raise RuntimeError(
-            f"MongoDB startup failed ({type(e).__name__}). Check the URI, database credentials, and network access."
-        ) from None
+    except (Exception, CancelledError) as error:
+        await close_mongo_connection()
+        if isinstance(error, CancelledError):
+            raise
+        if isinstance(error, ConfigurationError):
+            message = "Check the Atlas connection string in MONGODB_URL and confirm its SRV hostname resolves."
+        elif isinstance(error, OperationFailure) and error.code in (13, 18):
+            message = "Check the Atlas database user, password, and database permissions in Render."
+        elif isinstance(error, ConnectionFailure):
+            message = "Check that the Atlas cluster is active and Atlas Network Access allows Render's outbound IP ranges."
+        else:
+            message = "Check MONGODB_URL, DATABASE_NAME, and the Atlas database user's permissions."
+        raise RuntimeError(f"MongoDB startup failed ({type(error).__name__}). {message}") from None
 
 async def close_mongo_connection():
     """Graceful shutdown of MongoDB connections."""

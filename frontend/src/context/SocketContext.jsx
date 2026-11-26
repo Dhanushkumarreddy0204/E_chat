@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { websocketUrl } from '../api/urls';
+import { notificationsApi } from '../api/notifications';
 
 const SocketContext = createContext(null);
 
@@ -10,13 +11,23 @@ export const SocketProvider = ({ children }) => {
   const [typingUsers, setTypingUsers] = useState({}); // { [conversationId]: [userIds] }
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [latestNotification, setLatestNotification] = useState(null);
-  const [latestMessage, setLatestMessage] = useState(null);
   const [latestConversation, setLatestConversation] = useState(null);
+  const [latestReadReceipt, setLatestReadReceipt] = useState(null);
+  const [latestMessage, setLatestMessage] = useState(null);
   const [latestReaction, setLatestReaction] = useState(null);
   
   const wsRef = useRef(null);
   const pingIntervalRef = useRef(null);
   const reconnectTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    notificationsApi.getUnreadCount().then(({ unread_count }) => {
+      if (active) setUnreadNotifications(previous => Math.max(previous, unread_count || 0));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     if (!token) {
@@ -85,12 +96,16 @@ export const SocketProvider = ({ children }) => {
               });
               break;
 
-            case 'new_message':
-              setLatestMessage(data);
-              break;
-
             case 'new_conversation':
               setLatestConversation(data);
+              break;
+
+            case 'messages_read':
+              setLatestReadReceipt(data);
+              break;
+
+            case 'new_message':
+              setLatestMessage(data);
               break;
 
             case 'message_reaction':
@@ -165,8 +180,9 @@ export const SocketProvider = ({ children }) => {
       isUserOnline,
       typingUsers,
       sendTyping,
-      latestMessage,
       latestConversation,
+      latestReadReceipt,
+      latestMessage,
       latestReaction,
       latestNotification,
       unreadNotifications,

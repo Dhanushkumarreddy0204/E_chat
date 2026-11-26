@@ -1,445 +1,203 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { mediaUrl as resolveMediaUrl } from '../api/urls';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronDown, ChevronUp, CircleAlert, Film, Heart, LoaderCircle, MessageCircle, Pause, Play, Share2, Volume2, VolumeX } from 'lucide-react';
+import { mediaUrl } from '../api/urls';
 import { postsApi } from '../api/posts';
-import { Heart, MessageCircle, Share2, Music, User, Play, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react';
-import { Avatar } from '../components/common/Avatar';
-import { CommentsModal } from '../components/feed/CommentsModal';
-import { useNavigate } from 'react-router-dom';
 import { useClipFlow } from '../context/ClipFlowContext';
+import { Avatar } from '../components/common/Avatar';
+import { PageSkeleton, PageState } from '../components/common/PageState';
+import { CommentsModal } from '../components/feed/CommentsModal';
 
-export const ClipsPage = () => {
+export function ClipsPage() {
   const [clips, setClips] = useState([]);
+  const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [pendingScrollTop, setPendingScrollTop] = useState(null);
-  const [activeClipId, setActiveClipId] = useState(null);
-  const [activeCommentsClip, setActiveCommentsClip] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
-  const containerRef = useRef(null);
-
+  const [hasMore, setHasMore] = useState(false);
+  const [active, setActive] = useState(null);
+  const [comments, setComments] = useState(null);
+  const [restore, setRestore] = useState(null);
+  const currentPage = useRef(0);
+  const loadingPage = useRef(false);
+  const scroller = useRef(null);
   const { shouldRestoreClips, consumeRestoredScrollTop } = useClipFlow();
-  // Consume the saved position on return, after the previous Clips view unmounts.
   const restoreOnMount = useRef(shouldRestoreClips);
 
-  // Expose the scroll container ref globally so ClipFlowWatcher can read scrollTop
-  useEffect(() => {
-    window.__clipsScrollRef = containerRef;
-    return () => {
-      window.__clipsScrollRef = null;
-    };
-  }, []);
-
-  // Restore scroll position when returning from a ClipFlow-triggered navigation
-  useEffect(() => {
-    if (!restoreOnMount.current) return;
-    restoreOnMount.current = false;
-    setPendingScrollTop(consumeRestoredScrollTop());
-  }, [consumeRestoredScrollTop]);
-
-  useLayoutEffect(() => {
-    if (pendingScrollTop === null || loading || clips.length === 0 || !containerRef.current) return;
-
-    const container = containerRef.current;
-    const previousScrollBehavior = container.style.scrollBehavior;
-    container.style.scrollBehavior = 'auto';
-    container.scrollTop = pendingScrollTop;
-    container.style.scrollBehavior = previousScrollBehavior;
-    setPendingScrollTop(null);
-  }, [pendingScrollTop, loading, clips.length]);
-
-  const fetchClips = async (pageNum = 1) => {
+  const fetchPage = useCallback(async () => {
+    if (loadingPage.current) return;
+    loadingPage.current = true;
+    setLoading(true);
+    setError(false);
     try {
-      const res = await postsApi.getClips(pageNum, 10);
-      if (pageNum === 1) {
-        setClips(res.items);
-      } else {
-        setClips((prev) => [...prev, ...res.items]);
-      }
-      setHasMore(res.has_more);
-      if (res.items.length > 0 && pageNum === 1) {
-        setActiveClipId(res.items[0].id);
-      }
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load clips. Please try again.');
+      const result = await postsApi.getClips(currentPage.current + 1, 10);
+      setClips(previous => [...previous, ...result.items.filter(item => !previous.some(clip => clip.id === item.id))]);
+      setActive(previous => previous ?? result.items[0]?.id ?? null);
+      setHasMore(result.has_more);
+      currentPage.current += 1;
+    } catch {
+      setError(true);
     } finally {
+      loadingPage.current = false;
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchClips();
   }, []);
 
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    if (scrollHeight - scrollTop <= clientHeight * 1.5 && hasMore && !loading) {
-      setPage((p) => p + 1);
-      fetchClips(page + 1);
+  useEffect(() => { fetchPage(); }, [fetchPage]);
+  useEffect(() => {
+    window.__clipsScrollRef = scroller;
+    return () => { window.__clipsScrollRef = null; };
+  }, []);
+  useEffect(() => {
+    if (restoreOnMount.current) {
+      restoreOnMount.current = false;
+      setRestore(consumeRestoredScrollTop());
     }
-  };
+  }, [consumeRestoredScrollTop]);
+  useLayoutEffect(() => {
+    if (restore === null || !scroller.current || !clips.length) return;
+    const element = scroller.current;
+    if (restore > element.scrollHeight - element.clientHeight + 2 && hasMore && !error) {
+      fetchPage();
+      return;
+    }
+    element.scrollTop = restore;
+    setRestore(null);
+  }, [restore, clips.length, hasMore, error, fetchPage]);
 
-  if (loading && clips.length === 0) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center pt-20">
-        <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-500 rounded-full animate-spin"></div>
-        <p className="text-brand-600 mt-4 text-sm">Loading clips...</p>
-      </div>
-    );
+  function onScroll() {
+    const element = scroller.current;
+    if (element && hasMore && !error && element.scrollHeight - element.scrollTop < element.clientHeight * 2) fetchPage();
   }
 
-  if (error && clips.length === 0) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center pt-20">
-        <p className="text-brand-700 font-medium">{error}</p>
-        <button
-          onClick={() => fetchClips(1)}
-          className="mt-4 px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 transition-colors"
-        >
-          Try Again
-        </button>
-      </div>
-    );
+  function move(direction) {
+    const element = scroller.current;
+    if (!element) return;
+    element.scrollBy({ top: element.clientHeight * direction, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }
 
-  if (clips.length === 0) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center pt-20">
-        <div className="p-4 bg-brand-50 rounded-full mb-4">
-          <Music className="w-8 h-8 text-brand-400" />
-        </div>
-        <h2 className="text-lg font-bold text-brand-800">No Clips Yet</h2>
-        <p className="text-brand-600 text-sm">Create the first clip!</p>
-      </div>
-    );
-  }
+  if (!clips.length) return <div className="page-stack">
+    <h1 className="page-title">Clips</h1>
+    {loading ? <PageSkeleton media label="Loading clips" /> : error
+      ? <PageState icon={CircleAlert} title="Could not load clips" action="Retry" onAction={fetchPage} />
+      : <PageState icon={Film} title="No clips yet" description="Short videos shared on EChat will appear here." />}
+  </div>;
 
   return (
-    <>
-      <div
-        className="h-[calc(100dvh-112px)] md:h-screen w-full bg-black overflow-y-scroll snap-y snap-mandatory flex flex-col scroll-smooth no-scrollbar"
-        onScroll={handleScroll}
-        ref={containerRef}
-        style={{ scrollBehavior: 'smooth' }}
-      >
-        {clips.map((clip) => (
-          <ClipItem
-            key={clip.id}
-            clip={clip}
-            isActive={activeClipId === clip.id}
-            onSetActive={() => setActiveClipId(clip.id)}
-            onOpenComments={() => setActiveCommentsClip(clip)}
-          />
-        ))}
+    <div className="clip-stage relative">
+      <h1 className="clip-heading">Clips</h1>
+      <div className="clip-scroll no-scrollbar" onScroll={onScroll} ref={scroller} aria-label="Clips feed"
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            move(event.key === 'ArrowDown' ? 1 : -1);
+          }
+        }}>
+        {clips.map(clip => <ClipItem key={clip.id} clip={clip} isActive={active === clip.id} onActive={setActive} onOpenComments={setComments} />)}
       </div>
-
-      <CommentsModal
-        isOpen={Boolean(activeCommentsClip)}
-        post={activeCommentsClip}
-        onClose={() => setActiveCommentsClip(null)}
-        onCommentAdded={() => {
-          if (!activeCommentsClip) return;
-          setClips((prev) =>
-            prev.map((c) =>
-              c.id === activeCommentsClip.id
-                ? { ...c, comments_count: (c.comments_count || 0) + 1 }
-                : c
-            )
-          );
-          setActiveCommentsClip((prev) =>
-            prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : prev
-          );
-        }}
-      />
-    </>
-  );
-};
-
-const ClipItem = ({ clip, isActive, onSetActive, onOpenComments }) => {
-  const videoRef = useRef(null);
-  const containerRef = useRef(null);
-  const navigate = useNavigate();
-  const [isLiked, setIsLiked] = useState(clip.is_liked);
-  const [likesCount, setLikesCount] = useState(clip.likes_count);
-  const [commentsCount, setCommentsCount] = useState(clip.comments_count);
-  const [isMuted, setIsMuted] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(true);
-  const [hasError, setHasError] = useState(false);
-
-  useEffect(() => {
-    setCommentsCount(clip.comments_count);
-  }, [clip.comments_count]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          onSetActive();
-        }
-      },
-      { threshold: 0.6 }
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [onSetActive]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (isActive) {
-      video.muted = isMuted;
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsPlaying(true);
-            setIsBuffering(false);
-            setHasError(false);
-            postsApi.viewPost(clip.id).catch(() => {});
-          })
-          .catch((e) => {
-            console.log('Autoplay handled:', e);
-            // If sound prevented autoplay, mute and try again
-            if (!video.muted) {
-              video.muted = true;
-              setIsMuted(true);
-              video.play()
-                .then(() => {
-                  setIsPlaying(true);
-                  setIsBuffering(false);
-                })
-                .catch(() => {
-                  setIsPlaying(false);
-                  setIsBuffering(false);
-                });
-            } else {
-              setIsPlaying(false);
-              setIsBuffering(false);
-            }
-          });
-      }
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  }, [isActive, isMuted, clip.id]);
-
-  const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.paused) {
-      video.play()
-        .then(() => {
-          setIsPlaying(true);
-          setIsBuffering(false);
-        })
-        .catch((e) => console.log('Play error:', e));
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  const toggleMute = (e) => {
-    e.stopPropagation();
-    const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
-    if (videoRef.current) {
-      videoRef.current.muted = nextMuted;
-    }
-  };
-
-  const handleLike = async (e) => {
-    e.stopPropagation();
-    try {
-      const res = await postsApi.toggleLike(clip.id);
-      setIsLiked(res.is_liked);
-      setLikesCount(res.likes_count);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const mediaUrl = clip.media && clip.media.length > 0 ? clip.media[0].url : '';
-
-  return (
-    <div
-      ref={containerRef}
-      className="w-full h-full shrink-0 snap-start snap-always relative flex items-center justify-center bg-black select-none"
-      onClick={togglePlay}
-    >
-      {/* Video Player */}
-      {mediaUrl && (
-        <video
-          ref={videoRef}
-          src={resolveMediaUrl(mediaUrl)}
-          className="w-full h-full object-cover md:max-w-[450px]"
-          loop
-          playsInline
-          webkit-playsinline="true"
-          preload="auto"
-          muted={isMuted}
-          onPlay={() => {
-            setIsPlaying(true);
-            setIsBuffering(false);
-          }}
-          onPause={() => setIsPlaying(false)}
-          onWaiting={() => setIsBuffering(true)}
-          onPlaying={() => {
-            setIsPlaying(true);
-            setIsBuffering(false);
-          }}
-          onCanPlay={() => setIsBuffering(false)}
-          onError={() => {
-            setHasError(true);
-            setIsBuffering(false);
-            setIsPlaying(false);
-          }}
-        />
-      )}
-
-      {/* Buffering Spinner */}
-      {isBuffering && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-white animate-spin" />
-          </div>
-        </div>
-      )}
-
-      {/* Centered Play Button when paused */}
-      {!isPlaying && !isBuffering && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="w-16 h-16 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center shadow-lg border border-white/20 transition-transform transform scale-100 hover:scale-110">
-            <Play className="w-8 h-8 text-white ml-1 fill-white" />
-          </div>
-        </div>
-      )}
-
-      {/* Error state */}
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-white p-4 text-center z-10 pointer-events-auto">
-          <AlertCircle className="w-10 h-10 text-brand-400 mb-2" />
-          <p className="text-sm font-semibold">Video Unavailable</p>
-          <p className="text-xs text-white/70 mt-1 max-w-xs">
-            The video could not be loaded or is in an unsupported format.
-          </p>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setHasError(false);
-              setIsBuffering(true);
-              if (videoRef.current) {
-                videoRef.current.load();
-                videoRef.current.play().catch(() => {});
-              }
-            }}
-            className="mt-3 px-3 py-1.5 bg-brand-500 rounded-lg text-xs font-bold hover:bg-brand-600 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* Top Controls: Mute/Unmute */}
-      <button
-        onClick={toggleMute}
-        className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-black/50 backdrop-blur-xs flex items-center justify-center text-white hover:bg-black/70 transition-colors pointer-events-auto shadow-md"
-        title={isMuted ? 'Unmute' : 'Mute'}
-      >
-        {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-      </button>
-
-      {/* Overlay Information */}
-      <div className="absolute inset-0 md:max-w-[450px] mx-auto pointer-events-none">
-        {/* Right Side Actions */}
-        <div className="absolute right-3 sm:right-4 bottom-16 sm:bottom-24 flex flex-col items-center gap-3.5 sm:gap-5 pointer-events-auto">
-          <div
-            className="flex flex-col items-center cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/profile/${clip.user.username}`);
-            }}
-          >
-            <Avatar
-              src={clip.user.avatar_url}
-              alt={clip.user.full_name}
-              size="md"
-              className="border-2 border-white shadow-md"
-            />
-          </div>
-
-          <div className="flex flex-col items-center group" onClick={handleLike}>
-            <button className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center transition-transform hover:scale-110">
-              <Heart
-                className={`w-5 h-5 ${isLiked ? 'fill-brand-500 text-brand-500' : 'text-white'}`}
-              />
-            </button>
-            <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
-              {likesCount}
-            </span>
-          </div>
-
-          <div
-            className="flex flex-col items-center group"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenComments();
-            }}
-          >
-            <button className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center transition-transform hover:scale-110">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </button>
-            <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">
-              {commentsCount}
-            </span>
-          </div>
-
-          <div
-            className="flex flex-col items-center group"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (navigator.share) {
-                navigator.share({ title: 'EChat Clip', url: window.location.href });
-              }
-            }}
-          >
-            <button className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center transition-transform hover:scale-110">
-              <Share2 className="w-5 h-5 text-white" />
-            </button>
-            <span className="text-white text-xs font-semibold mt-1 drop-shadow-md">Share</span>
-          </div>
-        </div>
-
-        {/* Bottom Information */}
-        <div className="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-16 sm:right-20 pointer-events-auto">
-          <h3
-            className="text-white font-bold text-sm cursor-pointer hover:underline drop-shadow-md"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/profile/${clip.user.username}`);
-            }}
-          >
-            @{clip.user.username}
-          </h3>
-          <p className="text-white text-xs sm:text-sm mt-1 line-clamp-2 drop-shadow-md">
-            {clip.caption}
-          </p>
-          <div className="flex items-center gap-2 mt-2">
-            <Music className="w-3 h-3 text-white animate-spin-slow" />
-            <span className="text-white text-[11px] sm:text-xs drop-shadow-md">Original Audio</span>
-          </div>
-        </div>
+      <div className="absolute bottom-4 right-3 z-10 hidden gap-2 md:flex">
+        <button type="button" aria-label="Previous clip" className="clip-control" onClick={() => move(-1)}><ChevronUp size={20} /></button>
+        <button type="button" aria-label="Next clip" className="clip-control" onClick={() => move(1)}><ChevronDown size={20} /></button>
       </div>
+      {error && <button type="button" className="pill-button primary-button absolute bottom-4 left-4 z-10" onClick={fetchPage}>Retry loading clips</button>}
+      {comments && <CommentsModal isOpen post={comments} onClose={() => setComments(null)} onCommentAdded={() => {
+        setClips(previous => previous.map(clip => clip.id === comments.id
+          ? { ...clip, comments_count: (clip.comments_count || 0) + 1 } : clip));
+      }} />}
     </div>
   );
-};
+}
+
+function ClipItem({ clip, isActive, onActive, onOpenComments }) {
+  const item = useRef(null);
+  const player = useRef(null);
+  const viewRecorded = useRef(false);
+  const [liked, setLiked] = useState(clip.is_liked);
+  const [likes, setLikes] = useState(clip.likes_count || 0);
+  const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [liking, setLiking] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) onActive(clip.id);
+    }, { threshold: .6 });
+    if (item.current) observer.observe(item.current);
+    return () => observer.disconnect();
+  }, [clip.id, onActive]);
+
+  useEffect(() => {
+    const video = player.current;
+    if (isActive && video && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      video.play().catch(() => setBuffering(false));
+    } else video?.pause();
+    return () => video?.pause();
+  }, [isActive]);
+
+  async function toggleLike() {
+    if (liking) return;
+    setLiking(true);
+    try {
+      const result = await postsApi.toggleLike(clip.id);
+      setLiked(result.is_liked);
+      setLikes(result.likes_count);
+    } catch { setNotice('Could not update the like.'); }
+    finally { setLiking(false); }
+  }
+
+  async function share() {
+    const url = new URL(`/post/${clip.id}`, window.location.origin).href;
+    try {
+      if (navigator.share) await navigator.share({ title: 'EChat clip', url });
+      else { await navigator.clipboard.writeText(url); setNotice('Link copied.'); }
+    } catch (failure) { if (failure.name !== 'AbortError') setNotice('Could not share this clip.'); }
+  }
+
+  const source = mediaUrl(clip.media?.[0]?.url);
+  return (
+    <article ref={item} className="clip-item" aria-label={`Clip by ${clip.user.full_name}`} aria-hidden={!isActive} data-active={isActive} inert={!isActive ? '' : undefined}>
+      <div className="clip-player">
+        {source && <video ref={player} src={source} loop playsInline muted={muted} preload={isActive ? 'auto' : 'metadata'}
+          className="h-full w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+          onWaiting={() => setBuffering(true)} onCanPlay={() => setBuffering(false)}
+          onPlaying={() => {
+            setBuffering(false);
+            if (!viewRecorded.current) {
+              viewRecorded.current = true;
+              postsApi.viewPost(clip.id).catch(() => { viewRecorded.current = false; });
+            }
+          }}
+          onError={() => { setFailed(true); setBuffering(false); }} />}
+        {failed || !source ? <div className="absolute inset-0 z-[2] grid place-content-center justify-items-center gap-3 p-5 text-center text-white">
+          <CircleAlert size={24} /><p>This clip is unavailable.</p>
+          {source && <button type="button" className="pill-button primary-button" onClick={() => {
+            setFailed(false);
+            player.current?.load();
+            player.current?.play().catch(() => {});
+          }}>Retry</button>}
+        </div> : <button type="button" className="clip-play" aria-label={playing ? 'Pause clip' : 'Play clip'}
+          onClick={() => { if (player.current.paused) player.current.play().catch(() => {}); else player.current.pause(); }}>
+          {buffering ? <span className="clip-control"><LoaderCircle size={24} className="animate-spin" /></span> :
+            !playing ? <span className="clip-control"><Play size={25} /></span> : <span className="clip-pause clip-control"><Pause size={22} /></span>}
+        </button>}
+        <button type="button" className="clip-control absolute right-3 top-3 z-[3]" onClick={() => setMuted(!muted)}
+          aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
+        <div className="absolute bottom-5 right-3 z-[3] flex flex-col items-center gap-3 text-white sm:right-4">
+          <button type="button" className="clip-control" aria-label={liked ? 'Unlike clip' : 'Like clip'} aria-pressed={liked} disabled={liking} onClick={toggleLike}><Heart size={21} className={liked ? 'fill-white' : ''} /></button>
+          <span className="-mt-2 text-xs">{likes}</span>
+          <button type="button" className="clip-control" aria-label="Open clip comments" onClick={() => onOpenComments(clip)}><MessageCircle size={20} /></button>
+          <span className="-mt-2 text-xs">{clip.comments_count || 0}</span>
+          <button type="button" className="clip-control" aria-label="Share clip" onClick={share}><Share2 size={18} /></button>
+        </div>
+        <div className="absolute bottom-5 left-4 right-[72px] z-[3] space-y-2 text-white">
+          <Link to={`/profile/${clip.user.username}`} className="inline-flex min-w-0 items-center gap-2 rounded-lg text-sm font-semibold">
+            <Avatar src={clip.user.avatar_url} alt={clip.user.full_name} size="sm" className="shrink-0" /><span className="truncate">@{clip.user.username}</span>
+          </Link>
+          <p className="line-clamp-3 break-words text-sm leading-relaxed">{clip.caption}</p>
+          {notice && <p role="status" className="text-xs text-white">{notice}</p>}
+        </div>
+      </div>
+    </article>
+  );
+}

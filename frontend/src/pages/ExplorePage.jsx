@@ -1,162 +1,100 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, Sparkles, UserPlus, Check, Hash, Grid } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowUpRight, CircleAlert, Compass, Grid2X2, Search, Users } from 'lucide-react';
 import { postsApi } from '../api/posts';
 import { usersApi } from '../api/users';
 import { Avatar } from '../components/common/Avatar';
+import { PageSkeleton, PageState } from '../components/common/PageState';
 import { PostGrid } from '../components/profile/PostGrid';
 import { CommentsModal } from '../components/feed/CommentsModal';
 
-export const ExplorePage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const initialQuery = searchParams.get('q') || '';
-
-  const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'people'
-  const [posts, setPosts] = useState([]);
-  const [searchResults, setSearchResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+export function ExplorePage() {
+  const [params, setParams] = useSearchParams();
+  const urlQuery = params.get('q') || '';
+  const urlTab = params.get('tab') === 'people' ? 'people' : 'posts';
+  const [query, setQuery] = useState(urlQuery);
+  const [tab, setTab] = useState(urlTab);
+  const [posts, setPosts] = useState(null);
+  const [people, setPeople] = useState(null);
+  const [postsError, setPostsError] = useState(false);
+  const [peopleError, setPeopleError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [activePost, setActivePost] = useState(null);
 
   useEffect(() => {
-    const fetchExplore = async () => {
-      try {
-        setLoading(true);
-        const data = await postsApi.getExplore(1, 30);
-        setPosts(data.items);
-      } catch (err) {
-        console.error('Error fetching explore posts:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchExplore();
-  }, []);
+    setQuery(urlQuery);
+    setTab(urlTab);
+  }, [urlQuery, urlTab]);
 
-  // Handle Search Queries
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
+    let active = true;
+    setPostsError(false);
+    postsApi.getExplore(1, 60).then(data => { if (active) setPosts(data.items); })
+      .catch(() => { if (active) setPostsError(true); });
+    return () => { active = false; };
+  }, [retry]);
 
-    const timer = setTimeout(async () => {
-      try {
-        setLoading(true);
-        const results = await usersApi.searchUsers(searchQuery.trim());
-        setSearchResults(results);
-      } catch (err) {
-        console.error('Error searching:', err);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
+  useEffect(() => {
+    if (tab !== 'people') return;
+    let active = true;
+    setPeopleError(false);
+    setPeople(null);
+    const term = query.trim().replace(/^#/, '');
+    const timer = setTimeout(() => {
+      (term ? usersApi.searchUsers(term) : usersApi.getSuggestions(16))
+        .then(data => { if (active) setPeople(data); })
+        .catch(() => { if (active) setPeopleError(true); });
+    }, term ? 260 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [tab, query, retry]);
 
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  function submitSearch(event) {
+    event.preventDefault();
+    const next = new URLSearchParams();
+    if (query.trim()) next.set('q', query.trim());
+    if (tab === 'people') next.set('tab', tab);
+    setParams(next, { replace: true });
+  }
 
+  const term = query.trim().toLowerCase();
+  const filteredPosts = !term ? posts : posts?.filter(post => {
+    const tags = post.tags || [];
+    if (term.startsWith('#')) return tags.some(tag => tag.toLowerCase().replace(/^#/, '') === term.slice(1));
+    return [post.caption, post.location, post.user?.full_name, post.user?.username, ...tags]
+      .some(value => value?.toLowerCase().includes(term));
+  });
+  const items = tab === 'people' ? people : filteredPosts;
+  const error = tab === 'people' ? peopleError : postsError;
   return (
-    <div className="w-full max-w-4xl mx-auto py-4 px-3 sm:px-4 space-y-6">
-      {/* Search Input Header */}
-      <div className="p-4 rounded-xl bg-white shadow-sm border border-brand-100 space-y-3">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search creators, tech tags, topics (#FastAPI, #Design)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/90 border border-brand-200 rounded-xl py-3 pl-11 pr-4 text-xs sm:text-sm text-brand-900 placeholder-brand-300 focus:outline-none focus:border-brand-500 transition-colors shadow-inner"
-          />
-          <Search className="w-5 h-5 text-brand-600 absolute left-3.5 top-3" />
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('posts')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'posts'
-                ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30'
-                : 'bg-white text-brand-700 hover:text-brand-800'
-            }`}
-          >
-            <Grid className="w-3.5 h-3.5" />
-            <span>Top Posts</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('people')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'people'
-                ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30'
-                : 'bg-white text-brand-700 hover:text-brand-800'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>People {searchResults.length > 0 && `(${searchResults.length})`}</span>
-          </button>
+    <div className="page-stack">
+      <div className="space-y-2">
+        <h1 className="page-title">Explore</h1>
+        <p className="text-sm text-text-secondary">Find people, posts, and topics.</p>
+      </div>
+      <div className="panel space-y-3 p-4 sm:p-5">
+        <form className="relative" role="search" onSubmit={submitSearch}>
+          <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-400" />
+          <input aria-label="Search people or posts" value={query} onChange={event => setQuery(event.target.value)}
+            className="field !pl-10" placeholder={tab === 'people' ? 'Search for people' : 'Search recent posts or #topics'} />
+        </form>
+        <div className="flex gap-2" aria-label="Search category">
+          {[['posts', 'Posts', Grid2X2], ['people', 'People', Users]].map(([value, label, Icon]) =>
+            <button key={value} type="button" onClick={() => setTab(value)} aria-pressed={value === tab}
+              className={`pill-button ${value === tab ? 'primary-button' : 'secondary-button'}`}><Icon size={16} />{label}</button>)}
         </div>
       </div>
-
-      {/* Search Results / People Tab */}
-      {activeTab === 'people' && (
-        <div className="rounded-xl bg-white shadow-sm border border-brand-100 p-4 space-y-3">
-          <h3 className="text-xs font-bold text-brand-700 uppercase tracking-wider">
-            {searchQuery ? `Users matching "${searchQuery}"` : 'Discover People'}
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {searchResults.map((u) => (
-              <div
-                key={u.id}
-                onClick={() => navigate(`/profile/${u.username}`)}
-                className="p-3 rounded-xl bg-brand-50/30 border border-brand-200 hover:border-brand-500/40 cursor-pointer flex items-center justify-between gap-2.5 transition-all"
-              >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <Avatar src={u.avatar_url} alt={u.full_name} size="md" isOnline={u.is_online} showOnlineStatus={true} className="shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-brand-900 truncate">{u.full_name}</p>
-                    <p className="text-[11px] text-brand-600 truncate">@{u.username}</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/profile/${u.username}`);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 text-xs font-semibold hover:bg-brand-100 hover:text-brand-900 transition-colors shrink-0"
-                >
-                  View Profile
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Explore Posts Gallery Grid */}
-      {activeTab === 'posts' && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-700">Discover Content</h3>
-            <span className="text-xs text-brand-600">{posts.length} trending items</span>
-          </div>
-
-          <PostGrid
-            posts={posts}
-            onPostClick={(p) => setActivePost(p)}
-          />
-        </section>
-      )}
-
-      {/* Post Details / Comments Modal */}
-      <CommentsModal
-        isOpen={Boolean(activePost)}
-        post={activePost}
-        onClose={() => setActivePost(null)}
-      />
+      {error ? <PageState icon={CircleAlert} title="Could not load results" action="Retry" onAction={() => setRetry(value => value + 1)} /> :
+        !items ? <PageSkeleton label="Finding results" media /> :
+        !items.length ? <PageState icon={Compass} title={query ? 'No matches yet' : tab === 'people' ? 'No suggestions yet' : 'No posts yet'}
+          description={query ? 'Try another name, keyword, or topic.' : undefined} /> :
+        tab === 'people' ? <div className="grid gap-3 sm:grid-cols-2">
+          {people.map(person => <Link key={person.id} to={`/profile/${person.username}`} className="panel flex min-w-0 items-center gap-3 p-4 hover:bg-brand-50">
+            <Avatar src={person.avatar_url} alt={person.full_name} className="shrink-0" />
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{person.full_name}</p><p className="truncate text-xs text-text-secondary">@{person.username}</p></div>
+            <ArrowUpRight size={17} className="shrink-0 text-brand-400" />
+          </Link>)}
+        </div> : <PostGrid posts={filteredPosts} onPostClick={setActivePost} />}
+      {activePost && <CommentsModal isOpen post={activePost} onClose={() => setActivePost(null)} />}
     </div>
   );
-};
+}
