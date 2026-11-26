@@ -1,61 +1,31 @@
-import React from 'react';
-import { mediaUrl as resolveMediaUrl } from '../../api/urls';
-import { Heart, MessageCircle, Film } from 'lucide-react';
+import { Film, Heart, MessageCircle } from 'lucide-react';
+import { mediaUrl } from '../../api/urls';
+import { PageState } from '../common/PageState';
 
-export const PostGrid = ({ posts, onPostClick }) => {
-  if (!posts || posts.length === 0) {
-    return (
-      <div className="text-center py-16 text-brand-600 text-xs rounded-xl bg-white shadow-sm border border-brand-100">
-        No posts published yet.
-      </div>
-    );
-  }
-
+export function PostGrid({ posts, onPostClick }) {
+  if (!posts?.length) return <PageState icon={Film} title="No posts yet" />;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
-      {posts.map((post) => {
-        const hasMedia = post.media && post.media.length > 0;
-        const media = hasMedia ? post.media[0] : null;
-
+    <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+      {posts.map(post => {
+        const media = post.media?.[0];
+        const video = media?.media_type === 'video';
         return (
-          <div
-            key={post.id}
-            onClick={() => onPostClick && onPostClick(post)}
-            className="group relative aspect-square rounded-xl overflow-hidden bg-white border border-brand-200 cursor-pointer"
-          >
-            {hasMedia ? (
-              media.media_type === 'video' ? (
-                <video src={resolveMediaUrl(media.url)} className="w-full h-full object-cover" />
-              ) : (
-                <img src={resolveMediaUrl(media.url)} alt="Post preview" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-              )
-            ) : (
-              <div className="w-full h-full p-4 flex items-center justify-center bg-gradient-to-br from-brand-900 to-emerald-950 text-brand-100 text-xs text-center line-clamp-4 font-medium">
-                {post.caption}
-              </div>
-            )}
-
-            {/* Video Badge */}
-            {hasMedia && media.media_type === 'video' && (
-              <div className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white shadow-xs">
-                <Film className="w-3.5 h-3.5" />
-              </div>
-            )}
-
-            {/* Hover Overlay */}
-            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white font-bold text-xs">
-              <div className="flex items-center gap-1.5">
-                <Heart className="w-4 h-4 fill-white" />
-                <span>{post.likes_count}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <MessageCircle className="w-4 h-4 fill-white" />
-                <span>{post.comments_count}</span>
-              </div>
+          <button type="button" key={post.id} onClick={() => onPostClick(post)}
+            aria-label={post.caption ? `Open post: ${post.caption.slice(0, 70)}` : 'Open post'}
+            className="panel group relative flex min-h-[155px] flex-col overflow-hidden text-left transition-colors hover:border-brand-400 sm:min-h-[185px]">
+            <div className="relative aspect-[5/4] w-full overflow-hidden bg-brand-50">
+              {video ? <video src={mediaUrl(media.url)} muted playsInline preload="metadata" className="h-full w-full object-cover" /> :
+                media ? <img src={mediaUrl(media.url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform group-hover:scale-[1.025]" /> :
+                <div className="grid h-full place-items-center p-4 sm:p-6"><p className="line-clamp-4 break-words font-display text-lg leading-tight text-text sm:text-2xl">{post.caption || 'Post'}</p></div>}
+              {video && <span className="absolute right-2 top-2 rounded-full bg-black/65 p-2 text-white"><Film size={14} /></span>}
             </div>
-          </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-text-secondary">
+              <span className="inline-flex items-center gap-1.5"><Heart size={14} />{post.likes_count || 0}</span>
+              <span className="inline-flex items-center gap-1.5"><MessageCircle size={14} />{post.comments_count || 0}</span>
+            </div>
+          </button>
         );
       })}
     </div>
   );
-};
+}

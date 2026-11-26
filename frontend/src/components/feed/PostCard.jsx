@@ -1,262 +1,158 @@
-import React, { useState } from 'react';
-import { mediaUrl as resolveMediaUrl } from '../../api/urls';
-import { useNavigate } from 'react-router-dom';
-import { 
-  Heart, 
-  MessageCircle, 
-  Share2, 
-  Bookmark, 
-  MoreHorizontal, 
-  Send, 
-  MapPin, 
-  Trash2 
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Bookmark, ChevronLeft, ChevronRight, Heart, MapPin, MessageCircle, MoreHorizontal, Send, Share2, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { mediaUrl } from '../../api/urls';
 import { postsApi } from '../../api/posts';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
+import { ModalFrame } from '../common/ModalFrame';
 
-export const PostCard = ({ post, onPostDeleted, onOpenComments }) => {
-  const { user: currentUser } = useAuth();
-  const navigate = useNavigate();
+export function PostCard({ post, onPostDeleted, onOpenComments, onCommentAdded }) {
+  const { user } = useAuth();
+  const [liked, setLiked] = useState(Boolean(post.is_liked));
+  const [likes, setLikes] = useState(post.likes_count || 0);
+  const [saved, setSaved] = useState(Boolean(post.is_bookmarked));
+  const [comment, setComment] = useState('');
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const [notice, setNotice] = useState('');
+  const [pending, setPending] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const actions = useRef(null);
+  const media = post.media?.[mediaIndex];
+  const author = post.user;
+  const canDelete = user?.id === author?.id;
 
-  const [isLiked, setIsLiked] = useState(post.is_liked);
-  const [likesCount, setLikesCount] = useState(post.likes_count);
-  const [isBookmarked, setIsBookmarked] = useState(post.is_bookmarked);
-  const [commentInput, setCommentInput] = useState('');
-  const [commentsCount, setCommentsCount] = useState(post.comments_count);
-  const [showHeartPop, setShowHeartPop] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    setLiked(Boolean(post.is_liked));
+    setLikes(post.likes_count || 0);
+    setSaved(Boolean(post.is_bookmarked));
+  }, [post.id, post.is_liked, post.likes_count, post.is_bookmarked]);
 
-  const isAuthor = currentUser && currentUser.id === post.user.id;
-
-  const handleLikeToggle = async () => {
+  async function run(action, work) {
+    setPending(previous => ({ ...previous, [action]: true }));
+    setNotice('');
     try {
-      const res = await postsApi.toggleLike(post.id);
-      setIsLiked(res.is_liked);
-      setLikesCount(res.likes_count);
-    } catch (err) {
-      console.error('Error liking post:', err);
+      await work();
+    } catch {
+      setNotice('That action could not be completed. Try again.');
+    } finally {
+      setPending(previous => ({ ...previous, [action]: false }));
     }
-  };
+  }
 
-  const handleDoubleTap = () => {
-    if (!isLiked) {
-      handleLikeToggle();
-    }
-    setShowHeartPop(true);
-    setTimeout(() => setShowHeartPop(false), 800);
-  };
+  function like() {
+    if (pending.like) return;
+    run('like', async () => {
+      const result = await postsApi.toggleLike(post.id);
+      setLiked(result.is_liked);
+      setLikes(result.likes_count);
+    });
+  }
 
-  const handleBookmarkToggle = async () => {
+  async function share() {
+    const url = new URL(`/post/${post.id}`, window.location.origin).href;
     try {
-      const res = await postsApi.toggleBookmark(post.id);
-      setIsBookmarked(res.is_bookmarked);
-    } catch (err) {
-      console.error('Error bookmarking post:', err);
+      if (navigator.share) await navigator.share({ title: 'EChat post', url });
+      else {
+        await navigator.clipboard.writeText(url);
+        setNotice('Link copied.');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') setNotice('Could not share this post.');
     }
-  };
+  }
 
-  const handleAddComment = async (e) => {
-    e.preventDefault();
-    if (!commentInput.trim()) return;
-
-    try {
-      await postsApi.addComment(post.id, commentInput.trim());
-      setCommentInput('');
-      setCommentsCount(prev => prev + 1);
-    } catch (err) {
-      console.error('Error adding comment:', err);
-    }
-  };
-
-  const handleDeletePost = async () => {
-    if (!window.confirm('Delete this post?')) return;
-    try {
-      await postsApi.deletePost(post.id);
-      if (onPostDeleted) onPostDeleted(post.id);
-    } catch (err) {
-      console.error('Error deleting post:', err);
-    }
-  };
-
-  const timeAgo = formatDistanceToNow(new Date(post.created_at), { addSuffix: true });
-
+  const comments = post.comments_count || 0;
+  const createdAt = new Date(post.created_at);
   return (
-    <article className="rounded-xl bg-white shadow-sm border border-brand-100 overflow-hidden mb-6 transition-all duration-300">
-      {/* Post Header */}
-      <div className="p-3.5 sm:p-4 flex items-center justify-between gap-2">
-        <div 
-          className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group min-w-0 flex-1 mr-2"
-          onClick={() => navigate(`/profile/${post.user.username}`)}
-        >
-          <Avatar src={post.user.avatar_url} alt={post.user.full_name} size="md" className="shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-brand-900 group-hover:text-brand-500 transition-colors truncate max-w-[140px] sm:max-w-xs">
-                {post.user.full_name}
-              </span>
-              <span className="text-xs text-brand-600 font-normal truncate">@{post.user.username}</span>
+    <article className="panel overflow-hidden">
+      <header className="flex items-center justify-between gap-2 px-4 py-3.5 sm:px-5">
+        <Link to={author ? `/profile/${author.username}` : '/'} className="flex min-w-0 items-center gap-3 rounded-md">
+          <Avatar src={author?.avatar_url} alt={author?.full_name} size="md" className="shrink-0" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold">{author?.full_name || 'EChat member'}</span>
+            <span className="flex items-center gap-1.5 truncate text-xs text-text-secondary">
+              {post.location ? <><MapPin size={13} /><span className="truncate">{post.location}</span></> : author ? '@' + author.username : null}
+            </span>
+          </span>
+        </Link>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {Number.isFinite(+createdAt) && <time dateTime={createdAt.toISOString()} className="max-w-[94px] truncate text-[11px] text-text-secondary">{formatDistanceToNow(createdAt, { addSuffix: true })}</time>}
+          <details className="relative" ref={actions}>
+            <summary className="icon-button list-none cursor-pointer !min-h-9 !min-w-9" aria-label="Post options"><MoreHorizontal size={20} /></summary>
+            <div className="panel absolute right-0 top-full z-10 min-w-40 space-y-1 p-1.5">
+              <button type="button" className="nav-item !min-h-9" onClick={() => { actions.current.open = false; share(); }}><Share2 size={15} /> Share post</button>
+              {canDelete && <button type="button" className="nav-item !min-h-9" onClick={() => { actions.current.open = false; setConfirmDelete(true); }}>
+                <Trash2 size={15} /> Delete post
+              </button>}
             </div>
-            {post.location && (
-              <div className="flex items-center gap-1 text-[11px] text-brand-700 truncate">
-                <MapPin className="w-3 h-3 text-brand-400 shrink-0" />
-                <span className="truncate">{post.location}</span>
-              </div>
-            )}
-          </div>
+          </details>
         </div>
+      </header>
 
-        <div className="flex items-center gap-2 relative shrink-0">
-          <span className="text-[11px] text-brand-600 shrink-0">{timeAgo}</span>
-          <button 
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-1.5 text-brand-700 hover:text-brand-900 rounded-lg hover:bg-brand-50"
-          >
-            <MoreHorizontal className="w-4 h-4" />
+      {post.caption && <p className="whitespace-pre-wrap break-words px-4 pb-3 text-sm leading-relaxed sm:px-5">{post.caption}</p>}
+      {post.tags?.length > 0 && <div className="flex flex-wrap gap-2 px-4 pb-3 sm:px-5">
+        {post.tags.map(tag => <Link key={tag} to={`/explore?q=${encodeURIComponent('#' + tag.replace(/^#/, ''))}`}
+          className="text-xs font-medium text-brand-400 hover:underline">#{tag.replace(/^#/, '')}</Link>)}
+      </div>}
+
+      {media && <div className="post-media relative mx-3 overflow-hidden rounded-[15px] bg-brand-50 sm:mx-4" onDoubleClick={() => { if (!liked) like(); }}>
+        {media.media_type === 'video' ? <video key={media.url} className="max-h-[530px] min-h-32 w-full object-contain" controls playsInline preload="metadata" src={mediaUrl(media.url)} />
+          : <img key={media.url} className="max-h-[530px] min-h-24 w-full object-contain" src={mediaUrl(media.url)} alt={post.caption || 'Photo shared in this post'} loading="lazy" decoding="async" />}
+        {post.media.length > 1 && <>
+          <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2 py-1 text-xs text-white">{mediaIndex + 1} / {post.media.length}</span>
+          {mediaIndex > 0 && <button type="button" className="media-arrow left-2" aria-label="Previous media" onClick={() => setMediaIndex(mediaIndex - 1)}><ChevronLeft size={20} /></button>}
+          {mediaIndex + 1 < post.media.length && <button type="button" className="media-arrow right-2" aria-label="Next media" onClick={() => setMediaIndex(mediaIndex + 1)}><ChevronRight size={20} /></button>}
+        </>}
+      </div>}
+
+      <div className="space-y-2 px-4 pb-4 pt-2.5 sm:px-5">
+        <div className="flex items-center gap-1.5">
+          <button type="button" aria-label={`${liked ? 'Unlike post' : 'Like post'}, ${likes} likes`} aria-pressed={liked} disabled={pending.like}
+            className="icon-button !gap-1.5 !px-2.5" onClick={like}>
+            <Heart size={19} className={liked ? 'fill-brand-400 text-brand-400' : ''} /><span className="text-xs tabular-nums">{likes}</span>
           </button>
-
-          {/* Dropdown Menu */}
-          {menuOpen && (
-            <div className="absolute right-0 top-8 w-36 rounded-xl bg-white border border-brand-200 py-1 z-20">
-              {isAuthor && (
-                <button
-                  onClick={handleDeletePost}
-                  className="w-full px-3 py-2 text-left text-xs font-medium text-brand-600 hover:bg-brand-100 flex items-center gap-2"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Post</span>
-                </button>
-              )}
-              <button
-                onClick={() => { navigator.clipboard.writeText(window.location.origin + `/post/${post.id}`); setMenuOpen(false); }}
-                className="w-full px-3 py-2 text-left text-xs font-medium text-brand-800 hover:bg-brand-50 flex items-center gap-2"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Copy Link</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Post Caption */}
-      {post.caption && (
-        <div className="px-4 pb-3">
-          <p className="text-xs sm:text-sm text-brand-900 leading-relaxed whitespace-pre-line">
-            {post.caption}
-          </p>
-        </div>
-      )}
-
-      {/* Post Media (Image/Video) */}
-      {post.media && post.media.length > 0 && (
-        <div 
-          className="relative w-full max-h-[460px] sm:max-h-[550px] bg-brand-50/40 flex items-center justify-center overflow-hidden cursor-pointer select-none"
-          onDoubleClick={handleDoubleTap}
-        >
-          {post.media[0].media_type === 'video' ? (
-            <video 
-              src={resolveMediaUrl(post.media[0].url)} 
-              controls 
-              className="w-full max-h-[460px] sm:max-h-[550px] object-contain"
-            />
-          ) : (
-            <img 
-              src={resolveMediaUrl(post.media[0].url)} 
-              alt="Post content" 
-              className="w-full max-h-[460px] sm:max-h-[550px] object-contain"
-            />
-          )}
-
-          {/* Double Tap Floating Heart */}
-          {showHeartPop && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-ping">
-              <Heart className="w-24 h-24 text-brand-500 fill-brand-500 filter drop-shadow-2xl" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Post Actions Bar */}
-      <div className="p-3.5 sm:p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3.5 sm:gap-4">
-            {/* Like */}
-            <button
-              onClick={handleLikeToggle}
-              className={`flex items-center gap-1.5 text-xs font-semibold transition-all ${
-                isLiked ? 'text-brand-500 scale-105' : 'text-brand-700 hover:text-brand-400'
-              }`}
-            >
-              <Heart className={`w-5 h-5 ${isLiked ? 'fill-brand-500' : ''}`} />
-              <span>{likesCount}</span>
-            </button>
-
-            {/* Comment */}
-            <button
-              onClick={() => onOpenComments(post)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-400 transition-colors"
-            >
-              <MessageCircle className="w-5 h-5" />
-              <span>{commentsCount}</span>
-            </button>
-
-            {/* Share */}
-            <button 
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({ title: 'EChat Post', url: window.location.href });
-                } else {
-                  navigator.clipboard.writeText(window.location.href);
-                  alert('Link copied to clipboard!');
-                }
-              }}
-              className="text-brand-700 hover:text-brand-400 transition-colors"
-            >
-              <Share2 className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Bookmark */}
-          <button
-            onClick={handleBookmarkToggle}
-            className={`transition-colors ${
-              isBookmarked ? 'text-brand-400' : 'text-brand-700 hover:text-brand-300'
-            }`}
-          >
-            <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-brand-400' : ''}`} />
+          <button type="button" aria-label={`Open comments, ${comments} comments`} className="icon-button !gap-1.5 !px-2.5" onClick={() => onOpenComments(post)}>
+            <MessageCircle size={19} /><span className="text-xs tabular-nums">{comments}</span>
           </button>
+          <button type="button" aria-label="Share post" className="icon-button" onClick={share}><Share2 size={18} /></button>
+          <div className="flex-1" />
+          <button type="button" aria-label={saved ? 'Remove from saved posts' : 'Save post'} aria-pressed={saved}
+            className="icon-button" disabled={pending.save} onClick={() => run('save', async () => {
+              const result = await postsApi.toggleBookmark(post.id);
+              setSaved(result.is_bookmarked);
+              setNotice(result.is_bookmarked ? 'Post saved.' : 'Post removed from saved.');
+            })}><Bookmark size={19} className={saved ? 'fill-brand-400 text-brand-400' : ''} /></button>
         </div>
-
-        {/* View all comments trigger */}
-        {commentsCount > 0 && (
-          <button
-            onClick={() => onOpenComments(post)}
-            className="text-xs text-brand-600 hover:text-brand-800 font-medium"
-          >
-            View all {commentsCount} comments
-          </button>
-        )}
-
-        {/* Inline Comment Input */}
-        <form onSubmit={handleAddComment} className="flex items-center gap-2 pt-2 border-t border-brand-200/60">
-          <input
-            type="text"
-            placeholder="Write a comment..."
-            value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
-            className="flex-1 bg-transparent py-1.5 text-xs text-brand-900 placeholder-brand-300 focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!commentInput.trim()}
-            className="text-xs font-bold text-brand-400 hover:text-brand-300 disabled:opacity-30 transition-opacity"
-          >
-            Post
-          </button>
+        <form className="flex items-center gap-2 border-t border-border pt-3" onSubmit={event => {
+          event.preventDefault();
+          if (comment.trim()) run('comment', async () => {
+            await postsApi.addComment(post.id, comment.trim());
+            onCommentAdded(post.id);
+            setComment('');
+          });
+        }}>
+          <input aria-label="Write a comment" className="field !py-2" placeholder="Write a comment…" value={comment}
+            onChange={event => setComment(event.target.value)} />
+          <button type="submit" aria-label="Post comment" className="icon-button !bg-brand-100" disabled={!comment.trim() || pending.comment}><Send size={17} /></button>
         </form>
+        {notice && <p role="status" className="text-xs text-text-secondary">{notice}</p>}
       </div>
+      {confirmDelete && <ModalFrame label="Delete post" onClose={() => setConfirmDelete(false)}>
+        <div className="modal-panel space-y-4 p-5">
+          <h2 className="section-title">Delete this post?</h2>
+          <p className="text-sm text-text-secondary">The post will be removed from your profile and the feed.</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="pill-button secondary-button" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            <button type="button" disabled={pending.delete} className="pill-button danger-button" onClick={() => run('delete', async () => {
+              await postsApi.deletePost(post.id);
+              setConfirmDelete(false);
+              onPostDeleted?.(post.id);
+            })}>Delete post</button>
+          </div>
+        </div>
+      </ModalFrame>}
     </article>
   );
-};
+}

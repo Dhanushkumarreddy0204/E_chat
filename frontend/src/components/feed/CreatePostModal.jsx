@@ -1,224 +1,116 @@
-import React, { useState } from 'react';
-import { mediaUrl as resolveMediaUrl } from '../../api/urls';
-import { X, Image, MapPin, Hash, Loader2, Sparkles, Video } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Film, Image, LoaderCircle, Plus, X } from 'lucide-react';
 import { postsApi } from '../../api/posts';
 import { uploadApi } from '../../api/upload';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
+import { ModalFrame } from '../common/ModalFrame';
 
-export const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
+export function CreatePostModal({ isOpen, onClose, onPostCreated }) {
   const { user } = useAuth();
-  const [postType, setPostType] = useState('post'); // 'post' or 'clip'
+  const [postType, setPostType] = useState('post');
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [caption, setCaption] = useState('');
-  const [location, setLocation] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
-  const [mediaFiles, setMediaFiles] = useState([]);
-  const [mediaPreviews, setMediaPreviews] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const picker = useRef(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const urls = files.map(file => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => urls.forEach(url => URL.revokeObjectURL(url));
+  }, [files]);
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-
-    if (postType === 'clip') {
-      const videoFiles = files.filter(f => f.type.startsWith('video/'));
-      if (videoFiles.length === 0) {
-        alert('Please select a video file for a Clip.');
-        return;
-      }
-      setMediaFiles([videoFiles[0]]);
-      setMediaPreviews([{ url: URL.createObjectURL(videoFiles[0]), type: 'video' }]);
-    } else {
-      setMediaFiles(files);
-      const previews = files.map(f => ({
-        url: URL.createObjectURL(f),
-        type: f.type.startsWith('video/') ? 'video' : 'image'
-      }));
-      setMediaPreviews(previews);
-    }
-  };
-
-  const handleRemoveMedia = (index) => {
-    setMediaFiles(prev => prev.filter((_, i) => i !== index));
-    setMediaPreviews(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (postType === 'post' && !caption.trim() && mediaFiles.length === 0) return;
-    if (postType === 'clip' && mediaFiles.length === 0) {
-      alert('A video is required for a Clip.');
-      return;
-    }
-
+  async function submit(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (postType === 'clip' ? !files.length : !caption.trim() && !files.length) return;
+    setBusy(true);
+    setError('');
     try {
-      setLoading(true);
-      const uploadedMedia = [];
-
-      for (const file of mediaFiles) {
-        const uploadRes = await uploadApi.uploadFile(file);
-        uploadedMedia.push({
-          url: uploadRes.url,
-          media_type: uploadRes.media_type,
-          aspect_ratio: 1.0,
-        });
+      const media = [];
+      for (const file of files) {
+        const response = await uploadApi.uploadFile(file);
+        media.push({ url: response.url, media_type: response.media_type, aspect_ratio: 1 });
       }
-
-      const tags = tagsInput
-        .split(',')
-        .map(t => t.trim().replace(/^#/, ''))
-        .filter(Boolean);
-
       await postsApi.createPost({
         caption: caption.trim(),
-        media: uploadedMedia,
-        location: location.trim(),
-        tags: tags,
-        is_clip: postType === 'clip'
+        media,
+        location: form.get('location').trim(),
+        tags: [...new Set(form.get('tags').split(',').map(tag => tag.trim().replace(/^#/, '')).filter(Boolean))],
+        is_clip: postType === 'clip',
       });
-
-      setCaption('');
-      setLocation('');
-      setTagsInput('');
-      setMediaFiles([]);
-      setMediaPreviews([]);
-      
-      onPostCreated();
+      onPostCreated(postType);
       onClose();
-    } catch (err) {
-      console.error('Error creating post:', err);
-      alert('Failed to publish.');
+    } catch (failure) {
+      const detail = failure.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Could not publish. Your draft is still here.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
+  if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl border border-brand-200 p-4 sm:p-6 space-y-4 sm:space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-brand-200 pb-3">
-          <div className="flex items-center gap-3">
-            <Avatar src={user?.avatar_url} alt={user?.full_name} size="md" />
-            <div>
-              <p className="text-sm font-bold text-brand-900">{user?.full_name}</p>
-              <p className="text-xs text-brand-700">Create new {postType === 'clip' ? 'Clip' : 'Post'}</p>
-            </div>
+    <ModalFrame label="Create post" onClose={busy ? () => {} : onClose}>
+      <div className="modal-panel space-y-4 overflow-y-auto p-5 sm:p-6">
+        <header className="flex items-center justify-between border-b border-border pb-4">
+          <h2 className="section-title">Create post</h2>
+          <button type="button" aria-label="Close" disabled={busy} className="icon-button" onClick={onClose}><X size={20} /></button>
+        </header>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2.5"><Avatar src={user?.avatar_url} alt={user?.full_name} size="sm" />
+            <span className="truncate text-sm font-semibold">{user?.full_name}</span></span>
+          <div className="flex gap-1.5">
+            {[['post', 'Post', Image], ['clip', 'Clip', Film]].map(([value, label, Icon]) =>
+              <button key={value} type="button" disabled={busy} aria-pressed={postType === value}
+                className={`pill-button ${postType === value ? 'primary-button' : 'secondary-button'}`}
+                onClick={() => {
+                  setPostType(value);
+                  setFiles(previous => value === 'clip' ? previous.filter(file => file.type.startsWith('video/')).slice(0, 1) : previous);
+                  setError('');
+                }}><Icon size={15} />{label}</button>)}
           </div>
-          <button 
-            onClick={onClose}
-            className="p-1.5 rounded-full text-brand-700 hover:text-brand-800 hover:bg-brand-50"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
-
-        {/* Post Type Selector */}
-        <div className="flex p-1 bg-brand-50 rounded-xl">
-          <button
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 ${
-              postType === 'post' ? 'bg-white text-brand-800 shadow-sm' : 'text-brand-600 hover:text-brand-800'
-            }`}
-            onClick={() => { setPostType('post'); setMediaFiles([]); setMediaPreviews([]); }}
-          >
-            <Image className="w-4 h-4" />
-            Standard Post
-          </button>
-          <button
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 ${
-              postType === 'clip' ? 'bg-white text-brand-800 shadow-sm' : 'text-brand-600 hover:text-brand-800'
-            }`}
-            onClick={() => { setPostType('clip'); setMediaFiles([]); setMediaPreviews([]); }}
-          >
-            <Video className="w-4 h-4" />
-            Short Clip
-          </button>
-        </div>
-
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <textarea
-            rows="3"
-            placeholder={postType === 'clip' ? "Describe your clip..." : "What's happening in your world?"}
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            className="w-full bg-white border border-brand-200 rounded-xl p-3.5 text-sm text-brand-900 placeholder-brand-300 focus:outline-none focus:border-brand-500 transition-colors resize-none"
-          />
-
-          {mediaPreviews.length > 0 && (
-            <div className={`grid gap-2 overflow-y-auto p-1 ${postType === 'clip' ? 'grid-cols-1' : 'grid-cols-2 max-h-56'}`}>
-              {mediaPreviews.map((m, idx) => (
-                <div key={idx} className={`relative rounded-xl overflow-hidden border border-brand-200 ${postType === 'clip' ? 'h-64 flex justify-center bg-black' : 'h-36'}`}>
-                  {m.type === 'video' ? (
-                    <video src={resolveMediaUrl(m.url)} className={postType === 'clip' ? "h-full object-contain" : "w-full h-full object-cover"} controls />
-                  ) : (
-                    <img src={resolveMediaUrl(m.url)} alt="Preview" className="w-full h-full object-cover" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveMedia(idx)}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-full bg-white/70 text-brand-900 hover:bg-brand-100"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Add location (e.g. Tokyo)"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full bg-white border border-brand-200 rounded-xl py-2 pl-8 pr-3 text-xs text-brand-900 placeholder-brand-300 focus:outline-none focus:border-brand-500"
-              />
-              <MapPin className="w-3.5 h-3.5 text-brand-400 absolute left-2.5 top-2.5" />
-            </div>
-
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Tags (e.g. funny, tech)"
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                className="w-full bg-white border border-brand-200 rounded-xl py-2 pl-8 pr-3 text-xs text-brand-900 placeholder-brand-300 focus:outline-none focus:border-brand-500"
-              />
-              <Hash className="w-3.5 h-3.5 text-brand-400 absolute left-2.5 top-2.5" />
-            </div>
+        <form className="grid gap-4" onSubmit={submit} aria-busy={busy}>
+          <label className="auth-label">Caption<textarea className="field min-h-24 resize-y" placeholder="What would you like to share?"
+            value={caption} onChange={event => setCaption(event.target.value)} disabled={busy} /></label>
+          {files.length > 0 && <div className="grid grid-cols-2 gap-2">
+            {files.map((file, index) => <div key={previews[index] || index} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-brand-100">
+              {previews[index] && (file.type.startsWith('video/')
+                ? <video src={previews[index]} controls playsInline className="h-full w-full object-contain" />
+                : <img src={previews[index]} alt={file.name} className="h-full w-full object-cover" />)}
+              <button type="button" aria-label={`Remove ${file.name}`} className="media-remove" disabled={busy}
+                onClick={() => setFiles(previous => previous.filter((_, position) => position !== index))}><X size={16} /></button>
+            </div>)}
+          </div>}
+          <input ref={picker} type="file" hidden accept={postType === 'clip' ? 'video/*' : 'image/*,video/*'} multiple={postType === 'post'}
+            onChange={event => {
+              const selected = [...event.target.files];
+              event.target.value = '';
+              if (!selected.length) return;
+              const usable = selected.filter(file => postType === 'clip' ? file.type.startsWith('video/') : /^(image|video)\//.test(file.type));
+              if (!usable.length) return setError(postType === 'clip' ? 'Choose a video for your clip.' : 'Choose a photo or video.');
+              setError('');
+              setFiles(previous => postType === 'clip' ? usable.slice(0, 1) : [...previous, ...usable]);
+            }} />
+          <button type="button" onClick={() => picker.current.click()} disabled={busy}
+            className="pill-button secondary-button justify-self-start"><Plus size={17} /> {postType === 'clip' ? 'Choose video' : 'Add photos or video'}</button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="auth-label">Location <input className="field" name="location" placeholder="Optional" disabled={busy} /></label>
+            <label className="auth-label">Tags <input className="field" name="tags" placeholder="Design, travel" disabled={busy} /></label>
           </div>
-
-          <div className="flex items-center justify-between pt-3 border-t border-brand-200">
-            <label className="py-2 px-3 rounded-xl bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-800 text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors">
-              {postType === 'clip' ? (
-                <><Video className="w-4 h-4 text-brand-500" /><span>Select Video</span></>
-              ) : (
-                <><Image className="w-4 h-4 text-brand-500" /><span>Attach Media</span></>
-              )}
-              <input 
-                type="file" 
-                multiple={postType !== 'clip'} 
-                accept={postType === 'clip' ? 'video/*' : 'image/*,video/*'} 
-                onChange={handleFileChange} 
-                className="hidden" 
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={loading || (postType === 'post' && !caption.trim() && mediaFiles.length === 0) || (postType === 'clip' && mediaFiles.length === 0)}
-              className="py-2.5 px-6 rounded-xl bg-brand-500 text-white font-bold text-xs flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              <span>Publish {postType === 'clip' ? 'Clip' : 'Post'}</span>
+          {error && <div role="alert" className="form-error">{error}</div>}
+          <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+            <button type="button" onClick={onClose} disabled={busy} className="pill-button secondary-button">Cancel</button>
+            <button type="submit" disabled={busy || (postType === 'clip' ? !files.length : !files.length && !caption.trim())}
+              className="pill-button primary-button disabled:opacity-45">
+              {busy && <LoaderCircle size={16} className="animate-spin" />}{busy ? 'Publishing…' : postType === 'clip' ? 'Publish clip' : 'Publish post'}
             </button>
-          </div>
+          </footer>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
-};
+}

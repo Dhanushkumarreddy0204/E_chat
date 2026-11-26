@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.schemas.user import UserOut
 
 class NotificationOut(BaseModel):
@@ -17,8 +17,7 @@ class NotificationOut(BaseModel):
     created_at: datetime
     data: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationCount(BaseModel):
     unread_count: int

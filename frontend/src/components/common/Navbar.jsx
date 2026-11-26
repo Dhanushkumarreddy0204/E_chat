@@ -1,68 +1,43 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Zap, Bell, MessageSquare, PlusSquare } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowUpRight, Bell, Bookmark, Plus, Search } from 'lucide-react';
 import { useSocket } from '../../context/SocketContext';
-import { Avatar } from './Avatar';
+import { Brand } from './Brand';
+import { ThemeToggle } from './ThemeToggle';
+import { navigation } from './navigation';
 
-export const Navbar = ({ onOpenCreatePost }) => {
-  const { user } = useAuth();
+export function Navbar({ onOpenCreatePost }) {
   const { unreadNotifications } = useSocket();
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { pathname } = useLocation();
+  const [query, setQuery] = useState('');
+  const title = navigation.find(item => item.path === pathname || (item.path !== '/' && pathname.startsWith(item.path + '/')))?.name || 'Post';
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
+  function submit(event) {
+    event.preventDefault();
+    if (query.trim()) navigate(`/explore?q=${encodeURIComponent(query.trim())}`);
+  }
 
   return (
-    <header className="sticky top-0 z-20 w-full bg-surface/95 backdrop-blur-md border-b border-brand-100 shadow-xs px-3 sm:px-4 py-2.5 md:hidden">
-      <div className="flex items-center justify-between gap-2.5">
-        {/* Brand */}
-        <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => navigate('/')}>
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center shadow-xs">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-base sm:text-lg font-extrabold text-brand-700 tracking-wider">ECHAT</span>
-        </div>
-
-        {/* Search Bar */}
-        <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xs relative">
-          <input
-            type="text"
-            placeholder="Search users, posts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-brand-50/80 border border-brand-100 rounded-full py-1.5 pl-8 pr-3 text-xs text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
-          />
-          <Search className="w-3.5 h-3.5 text-brand-400 absolute left-2.5 top-2.5" />
+    <header className="app-topbar">
+      <div className="topbar-inner">
+        <div className="md:hidden"><Brand /></div>
+        <span className="hidden md:inline text-sm font-semibold tracking-tight">{title}</span>
+        <div className="flex-1" />
+        <form className="relative hidden w-full max-w-[306px] sm:block" onSubmit={submit} role="search" aria-label="Global search">
+          <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+          <input aria-label="Search EChat" className="field h-10 !pl-10 !pr-10" placeholder="Search people or posts" value={query} onChange={event => setQuery(event.target.value)} />
+          <button type="submit" aria-label="Search" className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md hover:bg-brand-100"><ArrowUpRight size={15} /></button>
         </form>
-
-        {/* Right Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button 
-            onClick={onOpenCreatePost}
-            aria-label="Create Post"
-            className="p-2 text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 transition-colors rounded-full"
-          >
-            <PlusSquare className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={() => navigate('/notifications')}
-            aria-label="Notifications"
-            className="p-2 text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 transition-colors rounded-full relative"
-          >
-            <Bell className="w-4 h-4" />
-            {unreadNotifications > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-500 animate-ping" />
-            )}
-          </button>
+        <div className="flex items-center gap-0.5 sm:gap-1.5">
+          <Link to="/saved" className="icon-button md:hidden" aria-label="Saved posts" title="Saved posts"><Bookmark size={19} /></Link>
+          <ThemeToggle />
+          <Link to="/notifications" className="icon-button relative" aria-label={unreadNotifications ? `Notifications, ${unreadNotifications} unread` : 'Notifications'} title="Notifications">
+            <Bell size={19} />{unreadNotifications > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-surface" />}
+          </Link>
+          <button type="button" onClick={onOpenCreatePost} className="icon-button md:hidden" aria-label="Create post" title="Create post"><Plus size={22} /></button>
         </div>
       </div>
     </header>
   );
-};
-
+}

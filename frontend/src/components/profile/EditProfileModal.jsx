@@ -1,156 +1,100 @@
-import React, { useState } from 'react';
-import { X, Image, Loader2, Sparkles } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ImagePlus, LoaderCircle, X } from 'lucide-react';
 import { usersApi } from '../../api/users';
 import { uploadApi } from '../../api/upload';
+import { mediaUrl } from '../../api/urls';
 import { useAuth } from '../../context/AuthContext';
+import { Avatar } from '../common/Avatar';
+import { ModalFrame } from '../common/ModalFrame';
 
-export const EditProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
+export function EditProfileModal({ onClose, onProfileUpdated }) {
   const { user, updateUser } = useAuth();
+  const [avatar, setAvatar] = useState(user.avatar_url || '');
+  const [cover, setCover] = useState(user.cover_url || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const avatarPicker = useRef(null);
+  const coverPicker = useRef(null);
 
-  const [fullName, setFullName] = useState(user?.full_name || '');
-  const [bio, setBio] = useState(user?.bio || '');
-  const [website, setWebsite] = useState(user?.website || '');
-  const [location, setLocation] = useState(user?.location || '');
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
-  const [coverUrl, setCoverUrl] = useState(user?.cover_url || '');
-  const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files[0];
+  async function upload(file, update) {
     if (!file) return;
+    if (!file.type.startsWith('image/')) return setError('Choose an image file.');
+    setError('');
+    setBusy(true);
     try {
-      setLoading(true);
-      const res = await uploadApi.uploadFile(file);
-      setAvatarUrl(res.url);
-    } catch (err) {
-      console.error('Error uploading avatar:', err);
+      const result = await uploadApi.uploadFile(file);
+      update(result.url);
+    } catch {
+      setError('Could not upload the image.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
-  const handleCoverUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  async function submit(event) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    const fullName = fields.get('full_name').trim();
+    if (!fullName) return setError('Enter your full name.');
+    setError('');
+    setBusy(true);
     try {
-      setLoading(true);
-      const res = await uploadApi.uploadFile(file);
-      setCoverUrl(res.url);
-    } catch (err) {
-      console.error('Error uploading cover:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
-      const updated = await usersApi.updateProfile({
-        full_name: fullName.trim(),
-        bio: bio.trim(),
-        website: website.trim(),
-        location: location.trim(),
-        avatar_url: avatarUrl,
-        cover_url: coverUrl,
+      const result = await usersApi.updateProfile({
+        full_name: fullName,
+        bio: fields.get('bio').trim(),
+        website: fields.get('website').trim(),
+        location: fields.get('location').trim(),
+        avatar_url: avatar,
+        cover_url: cover,
       });
-
-      updateUser(updated);
-      if (onProfileUpdated) onProfileUpdated(updated);
+      updateUser(result);
+      onProfileUpdated(result);
       onClose();
-    } catch (err) {
-      console.error('Error updating profile:', err);
-      alert('Failed to update profile.');
+    } catch {
+      setError('Could not save your profile. Try again.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-xl border border-brand-100 p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-brand-200 pb-3 shrink-0">
-          <h3 className="text-base font-bold text-brand-900">Edit Profile</h3>
-          <button 
-            onClick={onClose}
-            className="p-1.5 rounded-full text-brand-700 hover:text-brand-800 hover:bg-brand-50"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <ModalFrame label="Edit profile" onClose={busy ? () => {} : onClose}>
+      <div className="modal-panel space-y-4 overflow-y-auto p-5 sm:p-6">
+        <header className="flex items-center justify-between border-b border-border pb-3">
+          <h2 className="section-title">Edit profile</h2>
+          <button type="button" aria-label="Close" className="icon-button" disabled={busy} onClick={onClose}><X size={20} /></button>
+        </header>
+        <div className="relative mb-12">
+          <div className="profile-cover !h-[115px] overflow-hidden rounded-xl">
+            {cover && <img src={mediaUrl(cover)} alt="" className="h-full w-full object-cover" onError={event => { event.currentTarget.hidden = true; }} />}
+          </div>
+          <input type="file" accept="image/*" ref={avatarPicker} hidden onChange={event => {
+            upload(event.target.files[0], setAvatar); event.target.value = '';
+          }} />
+          <input type="file" accept="image/*" ref={coverPicker} hidden onChange={event => {
+            upload(event.target.files[0], setCover); event.target.value = '';
+          }} />
+          <button type="button" aria-label="Change cover photo" className="media-remove" onClick={() => coverPicker.current.click()} disabled={busy}><ImagePlus size={16} /></button>
+          <button type="button" aria-label="Change profile picture" className="absolute -bottom-7 left-3 rounded-full bg-surface p-1.5"
+            onClick={() => avatarPicker.current.click()} disabled={busy}><Avatar src={avatar} alt={user.full_name} size="lg" />
+            <span className="absolute bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full bg-brand-500 text-white"><ImagePlus size={13} /></span></button>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-1 flex-1">
-          {/* Avatar & Cover Upload Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="p-3 rounded-xl bg-white border border-brand-200 hover:border-brand-500 flex flex-col items-center gap-1.5 cursor-pointer text-center">
-              <Image className="w-5 h-5 text-brand-500" />
-              <span className="text-xs font-semibold text-brand-800">Change Avatar</span>
-              <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-            </label>
-
-            <label className="p-3 rounded-xl bg-white border border-brand-200 hover:border-brand-500 flex flex-col items-center gap-1.5 cursor-pointer text-center">
-              <Image className="w-5 h-5 text-pink-500" />
-              <span className="text-xs font-semibold text-brand-800">Change Cover</span>
-              <input type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" />
-            </label>
+        <form className="grid gap-3" onSubmit={submit} aria-busy={busy}>
+          <label className="auth-label">Full name<input className="field" name="full_name" defaultValue={user.full_name} required disabled={busy} /></label>
+          <label className="auth-label">Bio<textarea className="field resize-y" name="bio" rows={3} defaultValue={user.bio || ''} disabled={busy} /></label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="auth-label">Location<input className="field" name="location" defaultValue={user.location || ''} disabled={busy} /></label>
+            <label className="auth-label">Website<input className="field" name="website" inputMode="url" defaultValue={user.website || ''} disabled={busy} /></label>
           </div>
-
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Full Name</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="mt-1 w-full bg-white border border-brand-200 rounded-xl py-2.5 px-4 text-xs sm:text-sm text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-            />
+          {error && <p role="alert" className="form-error">{error}</p>}
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <button type="button" className="pill-button secondary-button" disabled={busy} onClick={onClose}>Cancel</button>
+            <button type="submit" className="pill-button primary-button disabled:opacity-50" disabled={busy}>
+              {busy && <LoaderCircle size={16} className="animate-spin" />} Save profile
+            </button>
           </div>
-
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Bio</label>
-            <textarea
-              rows="3"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell the community about yourself..."
-              className="mt-1 w-full bg-white border border-brand-200 rounded-xl p-3 text-xs sm:text-sm text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Location</label>
-            <input
-              type="text"
-              value={location}
-              placeholder="City, Country"
-              onChange={(e) => setLocation(e.target.value)}
-              className="mt-1 w-full bg-white border border-brand-200 rounded-xl py-2.5 px-4 text-xs sm:text-sm text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-brand-700">Website</label>
-            <input
-              type="text"
-              value={website}
-              placeholder="https://yourwebsite.com"
-              onChange={(e) => setWebsite(e.target.value)}
-              className="mt-1 w-full bg-white border border-brand-200 rounded-xl py-2.5 px-4 text-xs sm:text-sm text-brand-900 placeholder-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-brand-500 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-brand-600 active:scale-[0.99] disabled:opacity-50 transition-all shrink-0"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            <span>Save Profile</span>
-          </button>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
-};
+}

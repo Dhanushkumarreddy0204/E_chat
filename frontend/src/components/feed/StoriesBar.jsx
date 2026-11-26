@@ -1,68 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { storiesApi } from '../../api/stories';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
 
-export const StoriesBar = ({ onOpenCreateStory, onOpenStoryViewer }) => {
+export function StoriesBar({ revision, onOpenCreateStory, onOpenStoryViewer }) {
   const { user } = useAuth();
-  const [storyGroups, setStoryGroups] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const fetchStories = async () => {
-    try {
-      setLoading(true);
-      const data = await storiesApi.getStoriesFeed();
-      setStoryGroups(data);
-    } catch (err) {
-      console.error('Error fetching stories:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetchStories();
-  }, []);
-
-  const handleStoryClick = (group, index) => {
-    onOpenStoryViewer(storyGroups, index);
-  };
+    let active = true;
+    setLoading(true);
+    setError(false);
+    storiesApi.getStoriesFeed().then(data => { if (active) setGroups(data); })
+      .catch(() => { if (active) setError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [revision]);
 
   return (
-    <div className="w-full overflow-x-auto py-3 px-1 no-scrollbar">
-      <div className="flex items-center gap-4 min-w-max">
-        {/* Add Story Button for current user */}
-        <div className="flex flex-col items-center gap-1.5 cursor-pointer group" onClick={onOpenCreateStory}>
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full p-0.5 border-2 border-dashed border-brand-200 group-hover:border-brand-500 transition-colors flex items-center justify-center">
-              <Avatar src={user?.avatar_url} alt={user?.full_name} size="lg" />
-            </div>
-            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-brand-500 text-white flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Plus className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <span className="text-[11px] font-medium text-brand-800 group-hover:text-brand-400">Your Story</span>
-        </div>
-
-        {/* Stories from friends & following */}
-        {storyGroups.map((group, idx) => (
-          <div 
-            key={group.user.id} 
-            className="flex flex-col items-center gap-1.5 cursor-pointer group"
-            onClick={() => handleStoryClick(group, idx)}
-          >
-            <div className={`p-0.5 rounded-full transition-transform group-hover:scale-105 ${group.has_unseen ? 'story-ring-unseen' : 'story-ring-seen'}`}>
-              <div className="p-0.5 rounded-full">
-                <Avatar src={group.user.avatar_url} alt={group.user.full_name} size="lg" />
-              </div>
-            </div>
-            <span className="text-[11px] font-medium text-brand-800 max-w-[68px] truncate group-hover:text-brand-400">
-              {group.user.username}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div className="no-scrollbar flex items-start gap-4 overflow-x-auto px-1 py-3.5 sm:gap-5">
+      <button type="button" onClick={onOpenCreateStory} className="flex w-[68px] shrink-0 flex-col items-center gap-2 rounded-xl text-xs font-medium">
+        <span aria-hidden="true" className="relative flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-brand-300 bg-brand-50">
+          <Avatar src={user?.avatar_url} alt={user?.full_name} size="lg" />
+          <span className="absolute -right-0.5 bottom-0.5 grid h-6 w-6 place-items-center rounded-full bg-brand-500 text-white ring-2 ring-surface"><Plus size={15} /></span>
+        </span>
+        Your story
+      </button>
+      {loading && <div className="flex gap-4" role="status" aria-label="Loading stories">
+        {[1, 2, 3].map(slot => <div key={slot} className="skeleton h-16 w-16 shrink-0 !rounded-full" />)}
+      </div>}
+      {!loading && !error && groups.length === 0 && <p className="self-center px-2 text-xs text-text-secondary">New stories will appear here.</p>}
+      {error && <p role="status" className="self-center px-2 text-xs text-text-secondary">Stories are unavailable.</p>}
+      {groups.map((group, index) => (
+        <button key={group.user.id} type="button" onClick={() => onOpenStoryViewer(groups, index)}
+          className="flex w-[68px] shrink-0 flex-col items-center gap-2 rounded-xl text-xs font-medium">
+          <span aria-hidden="true" className={`p-0.5 ${group.has_unseen ? 'story-ring-unseen' : 'story-ring-seen'}`}>
+            <span className="block rounded-full bg-surface p-0.5"><Avatar src={group.user.avatar_url} alt={group.user.full_name} size="lg" /></span>
+          </span>
+          <span className="sr-only">View story by </span><span className="max-w-full truncate">{group.user.full_name}</span>
+        </button>
+      ))}
     </div>
   );
-};
+}

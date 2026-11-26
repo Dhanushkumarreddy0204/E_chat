@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2, Grid } from 'lucide-react';
+import { Grid2X2, UserRound } from 'lucide-react';
+import { PageState, PageSkeleton } from '../components/common/PageState';
 import { usersApi } from '../api/users';
 import { postsApi } from '../api/posts';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +29,7 @@ export const ProfilePage = () => {
     if (!targetUsername) return;
     try {
       setLoading(true);
+      setProfileUser(null);
       const [uData, pData] = await Promise.all([
         usersApi.getProfile(targetUsername),
         postsApi.getUserPosts(targetUsername)
@@ -59,28 +61,16 @@ export const ProfilePage = () => {
         setProfileUser(prev => ({ ...prev, followers_count: (prev.followers_count || 0) + 1 }));
       }
     } catch (err) {
-      console.error('Error toggling follow:', err);
+      throw err;
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
-      </div>
-    );
-  }
-
-  if (!profileUser) {
-    return (
-      <div className="text-center py-20 text-brand-700">
-        User not found.
-      </div>
-    );
-  }
+  if (loading) return <div className="page-stack"><PageSkeleton label="Loading profile" media /></div>;
+  if (!profileUser) return <div className="page-stack"><PageState icon={UserRound} title="Profile unavailable"
+    action="Retry" onAction={fetchProfileData} /></div>;
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-4 px-3 sm:px-4 space-y-6">
+    <div className="page-stack mx-auto max-w-[1040px]">
       {/* Header */}
       <ProfileHeader
         profileUser={profileUser}
@@ -93,8 +83,8 @@ export const ProfilePage = () => {
       {/* Posts Grid Section */}
       <section className="space-y-4">
         <div className="flex items-center gap-2 border-b border-brand-200 pb-3">
-          <Grid className="w-4 h-4 text-brand-400" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-brand-900">
+          <Grid2X2 className="w-4 h-4 text-brand-400" />
+          <h3 className="section-title">
             Posts ({userPosts.length})
           </h3>
         </div>
@@ -103,13 +93,12 @@ export const ProfilePage = () => {
       </section>
 
       {/* Edit Profile Modal */}
-      <EditProfileModal
-        isOpen={isEditOpen}
+      {isEditOpen && <EditProfileModal
         onClose={() => setIsEditOpen(false)}
         onProfileUpdated={(updated) => {
           setProfileUser(prev => ({ ...prev, ...updated }));
         }}
-      />
+      />}
 
       {/* Post Comments Modal */}
       <CommentsModal

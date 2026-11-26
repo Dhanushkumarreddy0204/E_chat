@@ -1,185 +1,78 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Sparkles, UserPlus, Check, TrendingUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, Bookmark, Hash, UserPlus, Users } from 'lucide-react';
 import { usersApi } from '../../api/users';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from './Avatar';
-import { FollowListModal } from '../profile/FollowListModal';
+import { PageSkeleton } from './PageState';
 
-export const RightPanel = () => {
+const topics = ['Design', 'Photography', 'Technology', 'Travel'];
+
+export function RightPanel() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [suggestions, setSuggestions] = useState([]);
-  const [followingMap, setFollowingMap] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [followListType, setFollowListType] = useState(null);
-
+  const [suggestions, setSuggestions] = useState(null);
+  const [followed, setFollowed] = useState({});
+  const [pending, setPending] = useState(null);
+  const [error, setError] = useState('');
   useEffect(() => {
-    const fetchSuggestions = async () => {
-      try {
-        setLoading(true);
-        const data = await usersApi.getSuggestions(5);
-        setSuggestions(data);
-      } catch (err) {
-        console.error('Error loading suggestions:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (user) {
-      fetchSuggestions();
-    }
-  }, [user]);
+    let active = true;
+    usersApi.getSuggestions(4).then(data => { if (active) setSuggestions(data); })
+      .catch(() => { if (active) { setSuggestions([]); setError('Could not load suggestions.'); } });
+    return () => { active = false; };
+  }, [user.id]);
 
-  const handleFollowToggle = async (targetUser) => {
-    const isCurrentlyFollowing = followingMap[targetUser.id] ?? targetUser.is_following;
+  async function toggle(person) {
+    setPending(person.id);
+    setError('');
+    const isFollowing = followed[person.id] ?? person.is_following;
     try {
-      if (isCurrentlyFollowing) {
-        await usersApi.unfollowUser(targetUser.id);
-        setFollowingMap(prev => ({ ...prev, [targetUser.id]: false }));
-      } else {
-        await usersApi.followUser(targetUser.id);
-        setFollowingMap(prev => ({ ...prev, [targetUser.id]: true }));
-      }
-    } catch (err) {
-      console.error('Error toggling follow:', err);
+      if (isFollowing) await usersApi.unfollowUser(person.id);
+      else await usersApi.followUser(person.id);
+      setFollowed(previous => ({ ...previous, [person.id]: !isFollowing }));
+    } catch {
+      setError('Could not update this follow. Try again.');
+    } finally {
+      setPending(null);
     }
-  };
-
-  const trendingTags = [
-    { tag: 'FastAPI', posts: '12.4K posts', category: 'Technology' },
-    { tag: 'WebSockets', posts: '8.1K posts', category: 'Engineering' },
-    { tag: 'UIUXDesign', posts: '24.9K posts', category: 'Creative' },
-    { tag: 'FullStack', posts: '19.3K posts', category: 'Development' },
-    { tag: 'Docker', posts: '15.6K posts', category: 'DevOps' },
-  ];
+  }
 
   return (
-    <aside className="hidden xl:block w-80 2xl:w-96 h-screen sticky top-0 p-5 space-y-6 shrink-0 overflow-y-auto border-l border-brand-200 bg-surface">
-      {/* Current User Card */}
-      {user && (
-        <div 
-          onClick={() => navigate(`/profile/${user.username}`)}
-          className="flex items-center justify-between p-3.5 rounded-xl bg-white shadow-sm border border-brand-100 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <Avatar src={user.avatar_url} alt={user.full_name} size="lg" isOnline={true} showOnlineStatus={true} />
-            <div>
-              <p className="text-sm font-bold text-brand-900 hover:text-brand-400 transition-colors">{user.full_name}</p>
-              <p className="text-xs text-brand-700">@{user.username}</p>
-              <div className="flex items-center gap-3 mt-1 text-[11px] text-brand-700">
-                <span
-                  className="hover:text-brand-500"
-                  onClick={(e) => { e.stopPropagation(); setFollowListType('followers'); }}
-                >
-                  <strong className="text-brand-900">{user.followers_count}</strong> followers
-                </span>
-                <span
-                  className="hover:text-brand-500"
-                  onClick={(e) => { e.stopPropagation(); setFollowListType('following'); }}
-                >
-                  <strong className="text-brand-900">{user.following_count}</strong> following
-                </span>
-              </div>
-            </div>
-          </div>
+    <aside className="app-rail space-y-5 pt-[clamp(20px,3.1vw,36px)]" aria-label="Discover">
+      <section className="panel px-4 py-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><Users size={17} className="text-brand-400" /><h2 className="text-sm font-semibold">People to follow</h2></div>
+          <Link to="/explore?tab=people" aria-label="Discover people" className="icon-button !min-h-8 !min-w-8"><ArrowUpRight size={16} /></Link>
         </div>
-      )}
-
-      {/* Suggested Users */}
-      <div className="p-4 rounded-xl bg-white shadow-sm border border-brand-100 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-brand-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-800">Suggested For You</h3>
-          </div>
-          <span className="text-xs text-brand-400 hover:underline cursor-pointer" onClick={() => navigate('/explore')}>See all</span>
-        </div>
-
-        <div className="space-y-3">
-          {suggestions.length === 0 && !loading && (
-            <p className="text-xs text-brand-600 py-2">No new suggestions right now.</p>
-          )}
-
-          {suggestions.map((sug) => {
-            const isFollowing = followingMap[sug.id] ?? sug.is_following;
-            return (
-              <div key={sug.id} className="flex items-center justify-between gap-2">
-                <div 
-                  className="flex items-center gap-2.5 cursor-pointer min-w-0"
-                  onClick={() => navigate(`/profile/${sug.username}`)}
-                >
-                  <Avatar src={sug.avatar_url} alt={sug.full_name} size="sm" isOnline={sug.is_online} showOnlineStatus={true} />
-                  <div className="truncate">
-                    <p className="text-xs font-semibold text-brand-900 hover:text-brand-400 truncate">{sug.full_name}</p>
-                    <p className="text-[10px] text-brand-600 truncate">@{sug.username}</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleFollowToggle(sug)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-1 shrink-0 ${
-                    isFollowing 
-                      ? 'bg-brand-50 text-brand-800 hover:bg-brand-100 hover:text-brand-900 border border-brand-200'
-                      : 'bg-brand-500 text-white hover:bg-brand-600 shadow-xs'
-                  }`}
-                >
-                  {isFollowing ? (
-                    <>
-                      <Check className="w-3 h-3" />
-                      <span>Following</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3 h-3" />
-                      <span>Follow</span>
-                    </>
-                  )}
+        {suggestions === null ? <PageSkeleton label="Loading suggestions" /> : suggestions.length ? (
+          <ul className="space-y-3">
+            {suggestions.map(person => (
+              <li key={person.id} className="flex items-center justify-between gap-2">
+                <Link to={`/profile/${person.username}`} className="flex min-w-0 items-center gap-2.5 rounded-lg">
+                  <Avatar src={person.avatar_url} alt={person.full_name} size="sm" className="shrink-0" />
+                  <span className="min-w-0"><span className="block truncate text-xs font-semibold">{person.full_name}</span>
+                    <span className="block truncate text-[11px] text-text-secondary">@{person.username}</span></span>
+                </Link>
+                <button type="button" aria-label={`${followed[person.id] ?? person.is_following ? 'Unfollow' : 'Follow'} ${person.full_name}`}
+                  title={followed[person.id] ?? person.is_following ? 'Following' : 'Follow'}
+                  onClick={() => toggle(person)} disabled={pending !== null} className="pill-button secondary-button !min-h-8 !px-2.5 !text-[11px]">
+                  {(followed[person.id] ?? person.is_following) ? 'Following' : <UserPlus size={15} />}
                 </button>
-              </div>
-            );
-          })}
+              </li>
+            ))}
+          </ul>
+        ) : !error && <p className="pb-1 text-xs text-text-secondary">You’re all caught up.</p>}
+        {error && <p role="status" className="mt-2 text-xs text-text-secondary">{error}</p>}
+      </section>
+      <section className="panel p-4">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Hash size={18} className="text-brand-400" /> Explore topics</h2>
+        <div className="flex flex-wrap gap-2">
+          {topics.map(topic => <Link key={topic} to={`/explore?q=${encodeURIComponent('#' + topic)}`}
+            className="pill-button secondary-button !min-h-8 !rounded-full !px-3 !text-xs">#{topic}</Link>)}
         </div>
-      </div>
-
-      {/* Trending Topics */}
-      <div className="p-4 rounded-xl bg-white shadow-sm border border-brand-100 space-y-3">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-pink-400" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-brand-800">Trending Right Now</h3>
-        </div>
-
-        <div className="space-y-2.5">
-          {trendingTags.map((item) => (
-            <div 
-              key={item.tag} 
-              className="group cursor-pointer hover:bg-brand-50/40 p-2 rounded-xl transition-colors"
-              onClick={() => navigate(`/explore?q=${item.tag}`)}
-            >
-              <div className="flex items-center justify-between text-[11px] text-brand-600">
-                <span>{item.category}</span>
-                <span>{item.posts}</span>
-              </div>
-              <p className="text-xs font-semibold text-brand-900 group-hover:text-brand-400 transition-colors">#{item.tag}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Footer Meta */}
-      <div className="px-2 text-[11px] text-brand-500 space-y-1">
-        <p>© 2025 EChat Inc. Production Social & Messaging Architecture.</p>
-        <p>Built with FastAPI, React, MongoDB & WebSockets.</p>
-      </div>
-
-      {user && (
-        <FollowListModal
-          isOpen={Boolean(followListType)}
-          userId={user.id}
-          type={followListType || 'followers'}
-          onClose={() => setFollowListType(null)}
-        />
-      )}
+      </section>
+      <Link to="/saved" className="panel flex items-center justify-between gap-3 p-4 text-sm font-semibold hover:bg-brand-50">
+        <span className="flex items-center gap-2"><Bookmark size={18} className="text-brand-400" /> Saved posts</span><ArrowUpRight size={16} className="text-text-secondary" />
+      </Link>
     </aside>
   );
-};
+}
