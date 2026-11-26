@@ -51,6 +51,8 @@ yarn-error.log*
 # Test artifacts and screenshots
 .playwright-mcp/
 *.png
+!frontend/public/*.png
+!frontend/src/assets/*.png
 runtime-validation-report.md
 
 # IDE & OS

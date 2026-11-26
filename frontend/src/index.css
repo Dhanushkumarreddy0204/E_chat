@@ -85,7 +85,7 @@
   .field { @apply w-full min-w-0 border border-border bg-brand-50 text-text outline-none; border-radius: 12px; padding: 11px 13px; font-size: 14px; }
   .field:focus { border-color: var(--accent-ink); box-shadow: 0 0 0 3px rgb(var(--brand-400) / .14); }
   .brand-lockup { @apply inline-flex items-center gap-2.5 font-semibold text-text whitespace-nowrap; font-size: 24px; letter-spacing: -.075em; line-height: 1; }
-  .brand-mark { @apply inline-flex shrink-0 items-center justify-center text-white; width: 38px; height: 38px; background: #245d46; border-radius: 13px; }
+  .brand-mark { @apply inline-flex shrink-0 items-center justify-center text-white overflow-hidden; width: 38px; height: 38px; background: #245d46; border-radius: 13px; }
   .nav-item { @apply flex items-center gap-3 w-full font-medium text-text-secondary transition-colors; border-radius: 12px; min-height: 46px; padding-inline: 12px; font-size: 14px; }
   .nav-item:hover, .nav-item[aria-current='page'] { background: var(--accent-soft); color: var(--accent-ink); }
   .nav-item[aria-current='page'] { font-weight: 660; }
